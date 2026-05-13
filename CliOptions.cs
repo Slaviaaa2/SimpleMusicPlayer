@@ -8,6 +8,7 @@ public sealed class CliOptions
     public bool Shuffle { get; private set; }
     public int? StartIndex { get; private set; }
     public LoopMode LoopMode { get; private set; } = LoopMode.All;
+    public string? DiscordAppId { get; private set; }
 
     public static CliOptions Parse(string[] args)
     {
@@ -49,6 +50,12 @@ public sealed class CliOptions
                             "one" => LoopMode.One,
                             _ => LoopMode.All
                         };
+                    }
+                    break;
+                case "--discord-app-id":
+                    if (TryReadValue(args, ref i, out var discordAppId))
+                    {
+                        options.DiscordAppId = discordAppId;
                     }
                     break;
             }

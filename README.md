@@ -22,12 +22,15 @@ dotnet run -- --album "D:\Music\Some Album" --loop all
 dotnet run -- "D:\Music\track1.mp3" "D:\Music\track2.mp4" --index 1 --loop one
 ```
 
+引数なしで起動した場合、カレントディレクトリに対応メディアファイルがあれば、そのフォルダをアルバムとして自動で読み込みます。
+
 ## CLI options
 
 - `--album <folder>`: フォルダ内の対応ファイルを名前順で読み込み
 - `--shuffle`: 読み込み時にシャッフル
 - `--index <n>`: 開始トラック番号。`0` 始まり
 - `--loop none|all|one`: 初期ループモード
+- `--discord-app-id <id>`: Discord Rich Presence 用の Application ID
 
 ## Keyboard
 
@@ -48,6 +51,35 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-Release.ps1
 ```
 
 `Release` の publish 先は既定で `D:\Tools\SimpleMusicPlayer` です。スクリプトは publish 後に Start Menu の `Programs` へ `Simple Music Player` のショートカットも作成します。
+
+さらに次も自動設定します。
+
+- `D:\Tools\SimpleMusicPlayer` をユーザー `PATH` に追加
+- Explorer のフォルダ右クリックに `Play with Simple Music Player`
+- Explorer のフォルダ背景右クリックに `Open here with Simple Music Player`
+
+これで `cmd` / PowerShell ではアルバムフォルダへ移動してから `SimpleMusicPlayer` だけで起動できます。
+
+## Discord Rich Presence
+
+Discord のアクティビティに再生中の曲名を出すには、Discord Developer Portal でアプリを作成して `Application ID` を取得し、次のどちらかで渡します。
+
+```powershell
+$env:SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID="123456789012345678"
+dotnet run -- "D:\Music\track1.mp3"
+```
+
+```powershell
+dotnet run -- --discord-app-id 123456789012345678 "D:\Music\track1.mp3"
+```
+
+Discord デスクトップアプリが起動している環境でのみ反映されます。未設定時は通常どおり再生し、Discord 連携だけ無効になります。
+
+公開済みの `SimpleMusicPlayer.exe` を使う場合は、`exe` と同じフォルダに `.env` を置いても読み込めます。
+
+```dotenv
+SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID=123456789012345678
+```
 
 ## GitHub release
 

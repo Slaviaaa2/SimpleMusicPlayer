@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     ];
 
     private readonly DispatcherTimer _positionTimer;
+    private readonly DiscordPresenceService _discordPresence;
     private readonly ObservableCollection<PlaybackItem> _queue = [];
     private readonly Random _random = new();
     private bool _isDraggingSeekBar;
@@ -35,12 +36,14 @@ public partial class MainWindow : Window
         _positionTimer.Tick += (_, _) => UpdateSeekUi();
 
         var options = CliOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
+        _discordPresence = new DiscordPresenceService(DiscordPresenceService.ResolveApplicationId(options));
         _loopMode = options.LoopMode;
         UpdateLoopButton();
 
-        if (options.Sources.Count > 0)
+        var initialSources = ResolveInitialSources(options);
+        if (initialSources.Count > 0)
         {
-            var added = AddSources(options.Sources, append: false, options.Shuffle);
+            var added = AddSources(initialSources, append: false, options.Shuffle);
             if (added.Count > 0)
             {
                 var startIndex = Math.Clamp(options.StartIndex ?? 0, 0, added.Count - 1);
@@ -156,6 +159,7 @@ public partial class MainWindow : Window
         Player.Play();
         _isPlaying = true;
         _positionTimer.Start();
+        UpdateDiscordPresence();
         UpdateUiState();
     }
 
@@ -182,6 +186,7 @@ public partial class MainWindow : Window
         }
 
         _isPlaying = false;
+        _discordPresence.Clear();
         UpdateUiState();
     }
 
@@ -190,6 +195,7 @@ public partial class MainWindow : Window
         _positionTimer.Stop();
         _isMediaLoaded = false;
         _isPlaying = false;
+        _discordPresence.Clear();
         UpdateUiState();
         System.Windows.MessageBox.Show(this, $"Could not play media.\n{e.ErrorException?.Message ?? "Unknown playback error."}", "Playback error", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
@@ -337,6 +343,7 @@ public partial class MainWindow : Window
             _isPlaying = true;
         }
 
+        UpdateDiscordPresence();
         UpdateUiState();
     }
 
@@ -439,9 +446,16 @@ public partial class MainWindow : Window
 
         if (_queue.Count == 0)
         {
+            _discordPresence.Clear();
             TrackTitleText.Text = "Drop files or use Open.";
             QueueInfoText.Text = "Example: SimpleMusicPlayer.exe --album D:\\Music\\Album --loop all --shuffle";
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _discordPresence.Dispose();
+        base.OnClosed(e);
     }
 
     private void UpdateLoopButton()
@@ -458,6 +472,34 @@ public partial class MainWindow : Window
     {
         var prefix = item.IsAlbumSource ? "Album" : "Queue";
         return $"{prefix} {_currentIndex + 1}/{_queue.Count}  {item.Path}";
+    }
+
+    private static IReadOnlyCollection<string> ResolveInitialSources(CliOptions options)
+    {
+        if (options.Sources.Count > 0)
+        {
+            return options.Sources;
+        }
+
+        var currentDirectory = Environment.CurrentDirectory;
+        if (Directory.Exists(currentDirectory) &&
+            Directory.EnumerateFiles(currentDirectory).Any(IsSupportedMediaFile))
+        {
+            return [currentDirectory];
+        }
+
+        return Array.Empty<string>();
+    }
+
+    private void UpdateDiscordPresence()
+    {
+        if (_currentIndex < 0 || _currentIndex >= _queue.Count)
+        {
+            _discordPresence.Clear();
+            return;
+        }
+
+        _discordPresence.SetNowPlaying(_queue[_currentIndex], _currentIndex, _queue.Count, _isPlaying);
     }
 
     private static bool IsSupportedMediaFile(string path)

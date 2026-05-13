@@ -20,4 +20,7 @@
     <UseAppHost>true</UseAppHost>
     <PublishDir Condition="'$(Configuration)' == 'Release'">D:\Tools\SimpleMusicPlayer\</PublishDir>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DiscordRichPresence" Version="1.6.1.70" />
+  </ItemGroup>
 </Project>
