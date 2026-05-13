@@ -83,10 +83,10 @@ SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID=123456789012345678
 
 ## GitHub release
 
-- GitHub Actions は `v0.1.0` のようなタグ push で Windows 向け zip を生成し、そのまま Release に添付します。
+- GitHub Actions は `v0.2.0` のようなタグ push で Windows 向け zip を生成し、そのまま Release に添付します。
 - 手動確認だけなら Actions の `workflow_dispatch` から同じビルドを artifact として取得できます。
 
 ```powershell
-git tag v0.1.0
+git tag v0.2.0
 git push origin main --tags
 ```
