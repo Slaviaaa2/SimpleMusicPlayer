@@ -9,11 +9,7 @@ namespace SimpleMusicPlayer;
 
 public partial class MainWindow : Window
 {
-    private static readonly HashSet<string> SupportedExtensions =
-    [
-        ".mp3", ".wav", ".aac", ".m4a", ".flac", ".wma", ".ogg",
-        ".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".webm"
-    ];
+    private static readonly HashSet<string> SupportedExtensions = [.. MediaFileTypes.SupportedExtensions];
 
     private readonly DispatcherTimer _positionTimer;
     private readonly DiscordPresenceService _discordPresence;
@@ -99,7 +95,7 @@ public partial class MainWindow : Window
         {
             Multiselect = true,
             Title = "Select audio or video files",
-            Filter = "Media files|*.mp3;*.wav;*.aac;*.m4a;*.flac;*.wma;*.ogg;*.mp4;*.m4v;*.mov;*.wmv;*.avi;*.mkv;*.webm|All files|*.*"
+            Filter = MediaFileTypes.OpenFileDialogFilter
         };
 
         if (dialog.ShowDialog(this) == true)

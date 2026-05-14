@@ -57,8 +57,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-Release.ps1
 - `D:\Tools\SimpleMusicPlayer` をユーザー `PATH` に追加
 - Explorer のフォルダ右クリックに `Play with Simple Music Player`
 - Explorer のフォルダ背景右クリックに `Open here with Simple Music Player`
+- 対応メディア拡張子を `Open with` / `Default apps` の候補として登録
 
 これで `cmd` / PowerShell ではアルバムフォルダへ移動してから `SimpleMusicPlayer` だけで起動できます。
+
+既定の再生アプリにしたい場合は、インストール後に Windows の `設定 > アプリ > 既定のアプリ` で `Simple Music Player` を選び、`.mp3` など必要な拡張子へ割り当ててください。Windows 10/11 では既定アプリ自体をアプリ側から強制変更はできないため、候補登録までをこのスクリプトで行います。
 
 ## Discord Rich Presence
 
@@ -83,10 +86,10 @@ SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID=123456789012345678
 
 ## GitHub release
 
-- GitHub Actions は `v0.2.0` のようなタグ push で Windows 向け zip を生成し、そのまま Release に添付します。
+- GitHub Actions は `v0.3.0` のようなタグ push で Windows 向け zip を生成し、そのまま Release に添付します。
 - 手動確認だけなら Actions の `workflow_dispatch` から同じビルドを artifact として取得できます。
 
 ```powershell
-git tag v0.2.0
+git tag v0.3.0
 git push origin main --tags
 ```
