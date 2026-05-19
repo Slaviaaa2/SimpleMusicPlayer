@@ -147,7 +147,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void AddUrlButton_Click(object sender, RoutedEventArgs e) => await AddUrlFromInputAsync();
+    private async void AddSourceButton_Click(object sender, RoutedEventArgs e) => await AddSourceFromInputAsync();
 
     private async void PrevButton_Click(object sender, RoutedEventArgs e) => await GoToPreviousTrackAsync();
 
@@ -231,14 +231,28 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void UrlTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private async void SourceInputTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
         {
             return;
         }
 
-        await AddUrlFromInputAsync();
+        await AddSourceFromInputAsync();
+        e.Handled = true;
+    }
+
+    private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            e.Effects = System.Windows.DragDropEffects.Copy;
+        }
+        else
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+        }
+
         e.Handled = true;
     }
 
@@ -578,7 +592,9 @@ public partial class MainWindow : Window
 
         QueueSummaryText.Text = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
         QueueCountText.Text = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
-        CurrentIndexText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count ? $"{_currentIndex + 1:00}" : "--";
+        CurrentIndexText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
+            ? $"Track {_currentIndex + 1}/{_queue.Count}"
+            : "Track --";
         SourceBadgeText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
             ? _queue[_currentIndex].SourceLabel
             : "Standby";
@@ -587,7 +603,7 @@ public partial class MainWindow : Window
         {
             QueueList.SelectedIndex = -1;
             TrackTitleText.Text = "Drop files or use Open.";
-            QueueInfoText.Text = "Load a folder, pick files, or paste a URL to build a visible queue before playback starts.";
+            QueueInfoText.Text = "Load a folder, pick files, or paste a URL to start playback.";
             SetStatus("Ready for local files, albums, and URL playback.");
             return;
         }
@@ -716,17 +732,17 @@ public partial class MainWindow : Window
             : $"{time.Minutes:00}:{time.Seconds:00}";
     }
 
-    private async Task AddUrlFromInputAsync()
+    private async Task AddSourceFromInputAsync()
     {
-        var source = UrlTextBox.Text.Trim();
-        if (!_ytDlpAudioCache.IsSupportedUrl(source))
+        var source = NormalizeSourceInput(SourceInputTextBox.Text);
+        if (!TryResolveInputSource(source, out var resolvedSource, out var validationMessage))
         {
-            System.Windows.MessageBox.Show(this, "Enter a valid http or https URL.", "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show(this, validationMessage, "Invalid source", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var added = AddSources([source], append: _queue.Count > 0, shuffle: false);
-        UrlTextBox.Clear();
+        var added = AddSources([resolvedSource], append: _queue.Count > 0, shuffle: false);
+        SourceInputTextBox.Clear();
 
         if (added.Count > 0 && _currentIndex < 0)
         {
@@ -1016,5 +1032,53 @@ public partial class MainWindow : Window
             var swapIndex = _random.Next(i + 1);
             (items[i], items[swapIndex]) = (items[swapIndex], items[i]);
         }
+    }
+
+    private static string NormalizeSourceInput(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return string.Empty;
+        }
+
+        return input.Trim().Trim('"');
+    }
+
+    private bool TryResolveInputSource(string source, out string resolvedSource, out string validationMessage)
+    {
+        resolvedSource = source;
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            validationMessage = "Enter a URL, file path, or folder path.";
+            return false;
+        }
+
+        if (_ytDlpAudioCache.IsSupportedUrl(source))
+        {
+            validationMessage = string.Empty;
+            return true;
+        }
+
+        if (Directory.Exists(source))
+        {
+            validationMessage = string.Empty;
+            return true;
+        }
+
+        if (File.Exists(source))
+        {
+            if (IsSupportedMediaFile(source))
+            {
+                validationMessage = string.Empty;
+                return true;
+            }
+
+            validationMessage = "That file exists, but its extension is not supported for playback.";
+            return false;
+        }
+
+        validationMessage = "Enter a valid URL, existing file path, or existing folder path.";
+        return false;
     }
 }

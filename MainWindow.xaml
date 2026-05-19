@@ -2,49 +2,41 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Simple Music Player"
-        Height="780"
-        Width="1320"
-        MinHeight="680"
-        MinWidth="1120"
-        Background="#0B1015"
-        Foreground="#F5EFE4"
-        FontFamily="Bahnschrift"
+        Height="540"
+        Width="760"
+        MinHeight="420"
+        MinWidth="560"
+        Background="#121212"
+        Foreground="#F3F3F3"
+        FontFamily="Segoe UI"
         AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
         Drop="Window_Drop">
     <Window.Resources>
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#16212B" />
-        <SolidColorBrush x:Key="SurfaceBrushAlt" Color="#101820" />
-        <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#2A3644" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#A7B4C2" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#F07B4A" />
-        <SolidColorBrush x:Key="AccentDeepBrush" Color="#9D4F32" />
-        <SolidColorBrush x:Key="ListSelectionBrush" Color="#233548" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#191919" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#2F2F2F" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#A7A7A7" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#3A7AFE" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#4B88FF" />
+        <SolidColorBrush x:Key="SelectionBrush" Color="#232D3C" />
 
-        <Style x:Key="CardBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="24" />
-            <Setter Property="Padding" Value="22" />
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource SurfaceStrokeBrush}" />
+        <Style x:Key="BadgeBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#202020" />
+            <Setter Property="BorderBrush" Value="#333333" />
             <Setter Property="BorderThickness" Value="1" />
-        </Style>
-
-        <Style x:Key="PillBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="999" />
-            <Setter Property="Padding" Value="12,6" />
-            <Setter Property="Margin" Value="0,0,10,10" />
-            <Setter Property="Background" Value="#12202D" />
-            <Setter Property="BorderBrush" Value="#294257" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="0,0,8,8" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Foreground" Value="#F9F4ED" />
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="16,10" />
-            <Setter Property="FontSize" Value="15" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#F3F3F3" />
+            <Setter Property="Background" Value="#262626" />
+            <Setter Property="BorderBrush" Value="#3A3A3A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="MinHeight" Value="34" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -53,17 +45,52 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="16">
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
-                                              Margin="{TemplateBinding Padding}" />
+                                              RecognizesAccessKey="True" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FF8A5B" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentDeepBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#303030" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#2A63D0" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#2A63D0" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
@@ -75,58 +102,95 @@
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#0D141C" />
-            <Setter Property="Foreground" Value="#F5EFE4" />
-            <Setter Property="BorderBrush" Value="#314052" />
+            <Setter Property="Background" Value="#181818" />
+            <Setter Property="Foreground" Value="#F3F3F3" />
+            <Setter Property="BorderBrush" Value="#353535" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="14,8" />
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="MinHeight" Value="36" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="14">
-                            <ScrollViewer x:Name="PART_ContentHost" />
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          VerticalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <Style TargetType="ListBox">
-            <Setter Property="Background" Value="#0E151C" />
-            <Setter Property="Foreground" Value="#F5EFE4" />
-            <Setter Property="BorderBrush" Value="#314052" />
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="4" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="#D8D8D8" />
+            <Setter Property="Background" Value="#1C1C1C" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="#333333"
+                                BorderThickness="1"
+                                CornerRadius="8,8,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Header" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#232323" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#414141" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="#191919" />
+            <Setter Property="Foreground" Value="#F3F3F3" />
+            <Setter Property="BorderBrush" Value="#2F2F2F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6" />
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         </Style>
 
         <Style TargetType="ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="ItemBorder"
-                                Background="#13202B"
-                                BorderBrush="#203040"
+                                Background="#1F1F1F"
+                                BorderBrush="#313131"
                                 BorderThickness="1"
-                                CornerRadius="18"
-                                Padding="0">
+                                CornerRadius="8">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#3D5B76" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#4A4A4A" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource ListSelectionBrush}" />
-                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#5B86A6" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionBrush}" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -135,485 +199,267 @@
         </Style>
 
         <Style TargetType="ProgressBar">
-            <Setter Property="Height" Value="6" />
-            <Setter Property="Foreground" Value="#2B7A70" />
-            <Setter Property="Background" Value="#B45F3D" />
+            <Setter Property="Height" Value="4" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#282828" />
         </Style>
     </Window.Resources>
 
-    <Grid>
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#091017" Offset="0" />
-                <GradientStop Color="#101922" Offset="0.55" />
-                <GradientStop Color="#081118" Offset="1" />
-            </LinearGradientBrush>
-        </Grid.Background>
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-        <Ellipse Width="340"
-                 Height="340"
-                 HorizontalAlignment="Left"
-                 VerticalAlignment="Top"
-                 Margin="-120,-90,0,0"
-                 Fill="#193C3A"
-                 Opacity="0.42" />
-        <Ellipse Width="420"
-                 Height="420"
-                 HorizontalAlignment="Right"
-                 VerticalAlignment="Top"
-                 Margin="0,-160,-120,0"
-                 Fill="#4C2414"
-                 Opacity="0.4" />
+        <MediaElement x:Name="Player"
+                      LoadedBehavior="Manual"
+                      UnloadedBehavior="Manual"
+                      MediaOpened="Player_MediaOpened"
+                      MediaEnded="Player_MediaEnded"
+                      MediaFailed="Player_MediaFailed"
+                      Volume="1"
+                      Visibility="Collapsed" />
 
-        <Grid Margin="28">
+        <StackPanel Grid.Row="0">
+            <TextBlock x:Name="TrackTitleText"
+                       FontSize="26"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"
+                       Text="Drop files or use Open." />
+
+            <DockPanel Margin="0,6,0,0">
+                <TextBlock x:Name="StatusText"
+                           DockPanel.Dock="Right"
+                           Foreground="{StaticResource MutedBrush}"
+                           Text="Ready." />
+                <TextBlock x:Name="QueueInfoText"
+                           Foreground="{StaticResource MutedBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           Text="Supports local files, album folders, and yt-dlp-backed URL playback." />
+            </DockPanel>
+
+            <WrapPanel Margin="0,10,0,0">
+                <Border Style="{StaticResource BadgeBorderStyle}">
+                    <TextBlock x:Name="SourceBadgeText" Text="Standby" />
+                </Border>
+                <Border Style="{StaticResource BadgeBorderStyle}">
+                    <TextBlock x:Name="CurrentIndexText" Text="Track --" />
+                </Border>
+                <Border Style="{StaticResource BadgeBorderStyle}">
+                    <TextBlock x:Name="QueueCountText" Text="Queue empty" />
+                </Border>
+                <Border Style="{StaticResource BadgeBorderStyle}">
+                    <TextBlock x:Name="LoopModeBadgeText" Text="Loop All" />
+                </Border>
+            </WrapPanel>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.55*" />
-                <ColumnDefinition Width="0.95*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" Margin="0,0,22,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <TextBox x:Name="SourceInputTextBox"
+                     Grid.Row="0"
+                     Grid.Column="0"
+                     VerticalContentAlignment="Center"
+                     KeyDown="SourceInputTextBox_KeyDown"
+                     ToolTip="Paste a URL, file path, or folder path" />
 
-                <MediaElement x:Name="Player"
-                              LoadedBehavior="Manual"
-                              UnloadedBehavior="Manual"
-                              MediaOpened="Player_MediaOpened"
-                              MediaEnded="Player_MediaEnded"
-                              MediaFailed="Player_MediaFailed"
-                              Volume="1"
-                              Visibility="Collapsed" />
+            <Button x:Name="AddSourceButton"
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Width="92"
+                    Margin="8,0,0,0"
+                    Click="AddSourceButton_Click"
+                    Content="Add"
+                    Style="{StaticResource PrimaryButtonStyle}" />
 
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="250" />
-                        </Grid.ColumnDefinitions>
+            <ProgressBar x:Name="PreparationBar"
+                         Grid.Row="1"
+                         Grid.ColumnSpan="2"
+                         Margin="0,8,0,0"
+                         IsIndeterminate="True"
+                         Visibility="Collapsed" />
+        </Grid>
 
-                        <StackPanel>
-                            <TextBlock Text="Now Playing"
-                                       FontSize="14"
-                                       Foreground="{StaticResource MutedBrush}" />
+        <Slider x:Name="SeekSlider"
+                Grid.Row="2"
+                Margin="0,16,0,0"
+                Minimum="0"
+                Maximum="1"
+                PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
+                PreviewMouseLeftButtonUp="SeekSlider_PreviewMouseLeftButtonUp"
+                ValueChanged="SeekSlider_ValueChanged" />
 
-                            <TextBlock x:Name="TrackTitleText"
-                                       Margin="0,10,0,0"
-                                       FontSize="34"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap"
-                                       MaxHeight="92"
-                                       Text="Drop files or use Open." />
+        <DockPanel Grid.Row="3" Margin="0,8,0,0">
+            <TextBlock x:Name="ElapsedText"
+                       DockPanel.Dock="Left"
+                       Foreground="#CFCFCF"
+                       Text="00:00" />
+            <TextBlock x:Name="RemainingText"
+                       DockPanel.Dock="Right"
+                       Foreground="#CFCFCF"
+                       Text="00:00" />
+        </DockPanel>
 
-                            <TextBlock x:Name="QueueInfoText"
-                                       Margin="0,10,0,0"
-                                       Foreground="#D7CEBF"
-                                       TextWrapping="Wrap"
-                                       Text="Supports local files, folders, and yt-dlp-backed URL playback." />
+        <WrapPanel Grid.Row="4" Margin="0,16,0,0">
+            <Button x:Name="OpenButton"
+                    Width="72"
+                    Margin="0,0,8,8"
+                    Click="OpenButton_Click"
+                    Content="Open" />
 
-                            <WrapPanel Margin="0,18,0,0">
-                                <Border Style="{StaticResource PillBorderStyle}">
-                                    <TextBlock x:Name="SourceBadgeText"
-                                               Foreground="#F5EFE4"
-                                               Text="Standby" />
-                                </Border>
-                                <Border Style="{StaticResource PillBorderStyle}">
-                                    <TextBlock x:Name="QueueCountText"
-                                               Foreground="#F5EFE4"
-                                               Text="Queue empty" />
-                                </Border>
-                                <Border Style="{StaticResource PillBorderStyle}">
-                                    <TextBlock x:Name="LoopModeBadgeText"
-                                               Foreground="#F5EFE4"
-                                               Text="Loop All" />
-                                </Border>
-                            </WrapPanel>
+            <Button x:Name="AddAlbumButton"
+                    Width="96"
+                    Margin="0,0,8,8"
+                    Click="AddAlbumButton_Click"
+                    Content="Add Album" />
 
-                            <Border Margin="0,18,0,0"
-                                    Padding="16"
-                                    CornerRadius="18"
-                                    Background="#0F1820"
-                                    BorderBrush="#2B3642"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Queue more from URL"
-                                               FontSize="16"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,4,0,0"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               Text="Paste a supported http(s) link. Cached media is reused automatically." />
-                                    <DockPanel Margin="0,12,0,0">
-                                        <TextBox x:Name="UrlTextBox"
-                                                 MinWidth="320"
-                                                 Height="42"
-                                                 VerticalContentAlignment="Center"
-                                                 KeyDown="UrlTextBox_KeyDown"
-                                                 ToolTip="Paste a YouTube or other media URL" />
-                                        <Button x:Name="AddUrlButton"
-                                                Width="106"
-                                                Height="42"
-                                                Margin="10,0,0,0"
-                                                Click="AddUrlButton_Click"
-                                                Content="Add URL" />
-                                    </DockPanel>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
+            <Button x:Name="PrevButton"
+                    Width="46"
+                    Margin="0,0,8,8"
+                    Click="PrevButton_Click"
+                    Content="|&lt;" />
 
-                        <Border Grid.Column="1"
-                                Margin="22,0,0,0"
-                                CornerRadius="28"
-                                Background="{StaticResource AccentBrush}"
-                                Padding="22">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
+            <Button x:Name="PlayPauseButton"
+                    Width="76"
+                    Margin="0,0,8,8"
+                    Click="PlayPauseButton_Click"
+                    Content="Play"
+                    Style="{StaticResource PrimaryButtonStyle}" />
 
-                                <TextBlock Text="Queue Focus"
-                                           FontSize="15"
-                                           FontWeight="SemiBold"
-                                           Foreground="#3C1E12" />
+            <Button x:Name="NextButton"
+                    Width="46"
+                    Margin="0,0,8,8"
+                    Click="NextButton_Click"
+                    Content="&gt;|" />
 
-                                <StackPanel Grid.Row="1"
-                                            VerticalAlignment="Center">
-                                    <TextBlock x:Name="CurrentIndexText"
-                                               FontSize="72"
-                                               FontWeight="Bold"
-                                               Foreground="#2D140B"
-                                               Text="--" />
-                                    <TextBlock x:Name="StatusText"
-                                               Margin="0,10,0,0"
-                                               FontSize="18"
-                                               Foreground="#4A2416"
-                                               TextWrapping="Wrap"
-                                               Text="Ready for files, albums, and URLs." />
-                                </StackPanel>
+            <Button x:Name="LoopButton"
+                    Width="84"
+                    Margin="0,0,8,8"
+                    Click="LoopButton_Click"
+                    Content="Loop: All" />
+        </WrapPanel>
 
-                                <ProgressBar x:Name="PreparationBar"
-                                             Grid.Row="2"
-                                             IsIndeterminate="True"
-                                             Visibility="Collapsed" />
-                            </Grid>
-                        </Border>
-                    </Grid>
-                </Border>
+        <TabControl Grid.Row="5" Margin="0,16,0,0">
+            <TabItem Header="Queue">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <Border Grid.Row="1"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <StackPanel>
-                        <DockPanel>
-                            <TextBlock Text="Playback Timeline"
-                                       FontSize="19"
-                                       FontWeight="SemiBold" />
-                            <TextBlock DockPanel.Dock="Right"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       Text="Drag to seek" />
-                        </DockPanel>
+                    <TextBlock x:Name="QueueSummaryText"
+                               Foreground="{StaticResource MutedBrush}"
+                               Text="0 queued" />
 
-                        <Slider x:Name="SeekSlider"
-                                Margin="0,16,0,0"
-                                Minimum="0"
-                                Maximum="1"
-                                PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
-                                PreviewMouseLeftButtonUp="SeekSlider_PreviewMouseLeftButtonUp"
-                                ValueChanged="SeekSlider_ValueChanged" />
+                    <ListBox x:Name="QueueList"
+                             Grid.Row="1"
+                             Margin="0,10,0,0"
+                             MouseDoubleClick="QueueList_MouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="10,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
 
-                        <DockPanel Margin="0,12,0,0">
-                            <TextBlock x:Name="ElapsedText"
-                                       Foreground="#C8D1DA"
-                                       Text="00:00" />
-                            <TextBlock x:Name="RemainingText"
-                                       DockPanel.Dock="Right"
-                                       Foreground="#C8D1DA"
-                                       Text="00:00" />
-                        </DockPanel>
-                    </StackPanel>
-                </Border>
+                                    <Border Width="48"
+                                            Height="22"
+                                            VerticalAlignment="Top"
+                                            Background="#272727"
+                                            BorderBrush="#3A3A3A"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   Foreground="#D6D6D6"
+                                                   Text="{Binding SourceLabel}" />
+                                    </Border>
 
-                <Border Grid.Row="2"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <StackPanel>
-                        <WrapPanel>
-                            <Button x:Name="OpenButton"
-                                    Width="90"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="OpenButton_Click"
-                                    Content="Open" />
-                            <Button x:Name="AddAlbumButton"
-                                    Width="118"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="AddAlbumButton_Click"
-                                    Content="Add Album" />
-                            <Button x:Name="PrevButton"
-                                    Width="64"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="PrevButton_Click"
-                                    Content="|&lt;" />
-                            <Button x:Name="PlayPauseButton"
-                                    Width="94"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="PlayPauseButton_Click"
-                                    Content="Play" />
-                            <Button x:Name="NextButton"
-                                    Width="64"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="NextButton_Click"
-                                    Content="&gt;|" />
-                            <Button x:Name="LoopButton"
-                                    Width="108"
-                                    Height="42"
-                                    Margin="0,0,10,10"
-                                    Click="LoopButton_Click"
-                                    Content="Loop: All" />
-                        </WrapPanel>
-
-                        <TextBlock Margin="0,8,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   Text="Space: Play or Pause   Left or Right: Seek 5s   Ctrl+Left or Ctrl+Right: Change track   Double click queue or history to jump." />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Row="3"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <StackPanel>
-                        <TextBlock Text="Usage Deck"
-                                   FontSize="19"
-                                   FontWeight="SemiBold" />
-                        <UniformGrid Margin="0,16,0,0"
-                                     Columns="2"
-                                     Rows="2">
-                            <Border Margin="0,0,12,12"
-                                    Padding="16"
-                                    CornerRadius="18"
-                                    Background="#111B24"
-                                    BorderBrush="#253546"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Drop albums"
-                                               FontSize="16"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               Text="Drag a folder to replace the queue, or append when an album is already loaded." />
-                                </StackPanel>
-                            </Border>
-                            <Border Margin="0,0,0,12"
-                                    Padding="16"
-                                    CornerRadius="18"
-                                    Background="#111B24"
-                                    BorderBrush="#253546"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="URL cache"
-                                               FontSize="16"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               Text="Downloaded media and transcoded audio are kept in cache to remove repeated wait time." />
-                                </StackPanel>
-                            </Border>
-                            <Border Margin="0,0,12,0"
-                                    Padding="16"
-                                    CornerRadius="18"
-                                    Background="#111B24"
-                                    BorderBrush="#253546"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Queue jump"
-                                               FontSize="16"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               Text="The queue panel shows the active sequence, so restarting or skipping never feels blind." />
-                                </StackPanel>
-                            </Border>
-                            <Border Padding="16"
-                                    CornerRadius="18"
-                                    Background="#111B24"
-                                    BorderBrush="#253546"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="History replay"
-                                               FontSize="16"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               Text="Albums and tracks on the right can be replayed instantly with a double click." />
-                                </StackPanel>
-                            </Border>
-                        </UniformGrid>
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="1.2*" />
-                    <RowDefinition Height="0.92*" />
-                    <RowDefinition Height="0.92*" />
-                </Grid.RowDefinitions>
-
-                <TextBlock Text="Queue and Replay"
-                           FontSize="26"
-                           FontWeight="SemiBold" />
-
-                <Border Grid.Row="1"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <DockPanel>
-                            <TextBlock Text="Up Next"
-                                       FontSize="20"
-                                       FontWeight="SemiBold" />
-                            <TextBlock x:Name="QueueSummaryText"
-                                       DockPanel.Dock="Right"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       Text="0 queued" />
-                        </DockPanel>
-
-                        <ListBox x:Name="QueueList"
-                                 Grid.Row="1"
-                                 Margin="0,14,0,0"
-                                 MouseDoubleClick="QueueList_MouseDoubleClick">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border Width="62"
-                                                Height="26"
-                                                VerticalAlignment="Top"
-                                                CornerRadius="13"
-                                                Background="#1D3142"
-                                                BorderBrush="#34516B"
-                                                BorderThickness="1">
-                                            <TextBlock HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="#F5EFE4"
-                                                       FontSize="12"
-                                                       FontWeight="SemiBold"
-                                                       Text="{Binding SourceLabel}" />
-                                        </Border>
-                                        <StackPanel Grid.Column="1"
-                                                    Margin="14,0,0,0">
-                                            <TextBlock FontSize="16"
-                                                       FontWeight="SemiBold"
-                                                       Text="{Binding DisplayName}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Margin="0,4,0,0"
-                                                       Foreground="{StaticResource MutedBrush}"
-                                                       Text="{Binding ContextText}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
-
-                <Border Grid.Row="2"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Text="Recent Albums"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
-
-                        <ListBox x:Name="AlbumHistoryList"
-                                 Grid.Row="1"
-                                 Margin="0,14,0,0"
-                                 MouseDoubleClick="AlbumHistoryList_MouseDoubleClick">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="12">
-                                        <TextBlock FontSize="16"
-                                                   FontWeight="SemiBold"
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                        <TextBlock FontWeight="SemiBold"
                                                    Text="{Binding DisplayName}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Margin="0,4,0,0"
-                                                   Foreground="{StaticResource MutedBrush}"
-                                                   Text="{Binding AlbumPath}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <DockPanel Margin="0,8,0,0">
-                                            <TextBlock Foreground="#9FB0C0"
-                                                       Text="{Binding TrackCountText}" />
-                                            <TextBlock DockPanel.Dock="Right"
-                                                       Foreground="#9FB0C0"
-                                                       Text="{Binding LastPlayedText}" />
-                                        </DockPanel>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
-
-                <Border Grid.Row="3"
-                        Margin="0,18,0,0"
-                        Style="{StaticResource CardBorderStyle}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Text="Recent Tracks"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
-
-                        <ListBox x:Name="TrackHistoryList"
-                                 Grid.Row="1"
-                                 Margin="0,14,0,0"
-                                 MouseDoubleClick="TrackHistoryList_MouseDoubleClick">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="12">
-                                        <TextBlock FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding DisplayName}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Margin="0,4,0,0"
+                                        <TextBlock Margin="0,3,0,0"
                                                    Foreground="{StaticResource MutedBrush}"
                                                    Text="{Binding ContextText}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Margin="0,8,0,0"
-                                                   Foreground="#9FB0C0"
-                                                   Text="{Binding LastPlayedText}" />
                                     </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
-            </Grid>
-        </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Recent Albums">
+                <ListBox x:Name="AlbumHistoryList"
+                         Margin="0,10,0,0"
+                         MouseDoubleClick="AlbumHistoryList_MouseDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="10,8">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding DisplayName}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Margin="0,3,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="{Binding AlbumPath}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <DockPanel Margin="0,6,0,0">
+                                    <TextBlock Foreground="#B7B7B7"
+                                               Text="{Binding TrackCountText}" />
+                                    <TextBlock DockPanel.Dock="Right"
+                                               Foreground="#B7B7B7"
+                                               Text="{Binding LastPlayedText}" />
+                                </DockPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
+
+            <TabItem Header="Recent Tracks">
+                <ListBox x:Name="TrackHistoryList"
+                         Margin="0,10,0,0"
+                         MouseDoubleClick="TrackHistoryList_MouseDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="10,8">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding DisplayName}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Margin="0,3,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="{Binding ContextText}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Foreground="#B7B7B7"
+                                           Text="{Binding LastPlayedText}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock Grid.Row="6"
+                   Margin="0,12,0,0"
+                   Foreground="#8E8E8E"
+                   Text="Space: Play/Pause  Left/Right: Seek  Ctrl+Left/Right: Track  Double click queue or history: Replay" />
     </Grid>
 </Window>
