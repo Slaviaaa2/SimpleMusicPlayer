@@ -14,7 +14,7 @@ internal sealed class FfmpegAudioCache : IDisposable
 
     public FfmpegAudioCache()
     {
-        _ffmpegPath = ResolveToolPath("ffmpeg");
+        _ffmpegPath = ToolPathResolver.ResolveExecutablePath("ffmpeg");
         _cacheDirectory = Path.Combine(AppContext.BaseDirectory, "cache", "transcoded");
     }
 
@@ -120,40 +120,6 @@ internal sealed class FfmpegAudioCache : IDisposable
         var fingerprint = $"{sourcePath}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint));
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
-    }
-
-    private static string? ResolveToolPath(string toolName)
-    {
-        var localToolPaths = new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg", $"{toolName}.exe"),
-            Path.Combine(AppContext.BaseDirectory, "tools", $"{toolName}.exe")
-        };
-
-        foreach (var candidate in localToolPaths)
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        var pathValue = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(pathValue))
-        {
-            return null;
-        }
-
-        foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var candidate = Path.Combine(directory, $"{toolName}.exe");
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
     }
 
     private static string BuildFailureDetails(string standardError, string standardOutput)

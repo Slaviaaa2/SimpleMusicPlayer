@@ -11,7 +11,20 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-13
+            rid: osx-x64
+          - os: macos-14
+            rid: osx-arm64
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -23,22 +36,22 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore .\SimpleMusicPlayer.csproj
+        run: dotnet restore ./SimpleMusicPlayer.csproj
 
       - name: Publish
-        run: dotnet publish .\SimpleMusicPlayer.csproj -c Release -r win-x64 --self-contained false -o .\publish
+        run: dotnet publish ./SimpleMusicPlayer.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o ./publish/${{ matrix.rid }}
 
       - name: Archive release
         shell: pwsh
         run: |
           $version = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "manual-build" }
-          $archiveName = "SimpleMusicPlayer-$version-win-x64.zip"
-          Compress-Archive -Path .\publish\* -DestinationPath ".\$archiveName" -Force
+          $archiveName = "SimpleMusicPlayer-$version-${{ matrix.rid }}.zip"
+          Compress-Archive -Path ./publish/${{ matrix.rid }}/* -DestinationPath "./$archiveName" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simple-music-player-win-x64
+          name: simple-music-player-${{ matrix.rid }}
           path: SimpleMusicPlayer-*.zip
 
       - name: Create GitHub Release

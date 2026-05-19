@@ -1,9 +1,13 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Windows;
-using System.Windows.Input;
-using System.Windows.Threading;
-using Forms = System.Windows.Forms;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 
 namespace SimpleMusicPlayer;
 
@@ -13,16 +17,43 @@ public partial class MainWindow : Window
     private const int MaxHistoryItems = 20;
 
     private readonly DispatcherTimer _positionTimer;
+    private readonly AppSetupCoordinator _appSetupCoordinator;
     private readonly DiscordPresenceService _discordPresence;
-    private readonly FfmpegAudioCache _ffmpegAudioCache;
     private readonly PlaybackHistoryStore _historyStore;
-    private readonly YtDlpAudioCache _ytDlpAudioCache;
     private readonly ObservableCollection<AlbumHistoryEntry> _albumHistory = [];
     private readonly ObservableCollection<PlaybackItem> _queue = [];
     private readonly ObservableCollection<TrackHistoryEntry> _trackHistory = [];
     private readonly Random _random = new();
+    private readonly TextBlock _trackTitleText;
+    private readonly TextBlock _statusText;
+    private readonly TextBlock _queueInfoText;
+    private readonly TextBlock _sourceBadgeText;
+    private readonly TextBlock _currentIndexText;
+    private readonly TextBlock _queueCountText;
+    private readonly TextBlock _loopModeBadgeText;
+    private readonly TextBox _sourceInputTextBox;
+    private readonly Button _addSourceButton;
+    private readonly ProgressBar _preparationBar;
+    private readonly Slider _seekSlider;
+    private readonly TextBlock _elapsedText;
+    private readonly TextBlock _remainingText;
+    private readonly Button _openButton;
+    private readonly Button _addAlbumButton;
+    private readonly Button _prevButton;
+    private readonly Button _playPauseButton;
+    private readonly Button _nextButton;
+    private readonly Button _loopButton;
+    private readonly TextBlock _queueSummaryText;
+    private readonly ListBox _queueList;
+    private readonly ListBox _albumHistoryList;
+    private readonly ListBox _trackHistoryList;
+    private FfmpegAudioCache _ffmpegAudioCache;
+    private YtDlpAudioCache _ytDlpAudioCache;
+    private PlaybackController? _playbackController;
     private CancellationTokenSource? _trackLoadCts;
+    private bool _hasCheckedAppSetup;
     private bool _isDraggingSeekBar;
+    private bool _isRunningAppSetup;
     private bool _isPlaying;
     private bool _isMediaLoaded;
     private bool _isPreparingTrack;
@@ -33,9 +64,33 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        AlbumHistoryList.ItemsSource = _albumHistory;
-        QueueList.ItemsSource = _queue;
-        TrackHistoryList.ItemsSource = _trackHistory;
+        _trackTitleText = this.FindControl<TextBlock>("TrackTitleText")!;
+        _statusText = this.FindControl<TextBlock>("StatusText")!;
+        _queueInfoText = this.FindControl<TextBlock>("QueueInfoText")!;
+        _sourceBadgeText = this.FindControl<TextBlock>("SourceBadgeText")!;
+        _currentIndexText = this.FindControl<TextBlock>("CurrentIndexText")!;
+        _queueCountText = this.FindControl<TextBlock>("QueueCountText")!;
+        _loopModeBadgeText = this.FindControl<TextBlock>("LoopModeBadgeText")!;
+        _sourceInputTextBox = this.FindControl<TextBox>("SourceInputTextBox")!;
+        _addSourceButton = this.FindControl<Button>("AddSourceButton")!;
+        _preparationBar = this.FindControl<ProgressBar>("PreparationBar")!;
+        _seekSlider = this.FindControl<Slider>("SeekSlider")!;
+        _elapsedText = this.FindControl<TextBlock>("ElapsedText")!;
+        _remainingText = this.FindControl<TextBlock>("RemainingText")!;
+        _openButton = this.FindControl<Button>("OpenButton")!;
+        _addAlbumButton = this.FindControl<Button>("AddAlbumButton")!;
+        _prevButton = this.FindControl<Button>("PrevButton")!;
+        _playPauseButton = this.FindControl<Button>("PlayPauseButton")!;
+        _nextButton = this.FindControl<Button>("NextButton")!;
+        _loopButton = this.FindControl<Button>("LoopButton")!;
+        _queueSummaryText = this.FindControl<TextBlock>("QueueSummaryText")!;
+        _queueList = this.FindControl<ListBox>("QueueList")!;
+        _albumHistoryList = this.FindControl<ListBox>("AlbumHistoryList")!;
+        _trackHistoryList = this.FindControl<ListBox>("TrackHistoryList")!;
+
+        _albumHistoryList.ItemsSource = _albumHistory;
+        _queueList.ItemsSource = _queue;
+        _trackHistoryList.ItemsSource = _trackHistory;
 
         _positionTimer = new DispatcherTimer
         {
@@ -43,6 +98,26 @@ public partial class MainWindow : Window
         };
         _positionTimer.Tick += (_, _) => UpdateSeekUi();
 
+        _openButton.Click += OpenButton_Click;
+        _addAlbumButton.Click += AddAlbumButton_Click;
+        _addSourceButton.Click += AddSourceButton_Click;
+        _prevButton.Click += PrevButton_Click;
+        _playPauseButton.Click += PlayPauseButton_Click;
+        _nextButton.Click += NextButton_Click;
+        _loopButton.Click += LoopButton_Click;
+        _sourceInputTextBox.KeyDown += SourceInputTextBox_KeyDown;
+        _seekSlider.PropertyChanged += SeekSlider_PropertyChanged;
+        _seekSlider.AddHandler(InputElement.PointerPressedEvent, SeekSlider_PointerPressed, RoutingStrategies.Tunnel);
+        _seekSlider.AddHandler(InputElement.PointerReleasedEvent, SeekSlider_PointerReleased, RoutingStrategies.Tunnel);
+        _queueList.DoubleTapped += QueueList_DoubleTapped;
+        _albumHistoryList.DoubleTapped += AlbumHistoryList_DoubleTapped;
+        _trackHistoryList.DoubleTapped += TrackHistoryList_DoubleTapped;
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, Window_DragOver);
+        AddHandler(DragDrop.DropEvent, Window_Drop);
+        Closing += (_, _) => DisposeResources();
+
+        _appSetupCoordinator = new AppSetupCoordinator();
         var options = CliOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
         _discordPresence = new DiscordPresenceService(DiscordPresenceService.ResolveApplicationId(options));
         _ffmpegAudioCache = new FfmpegAudioCache();
@@ -65,11 +140,12 @@ public partial class MainWindow : Window
         }
 
         UpdateUiState();
+        Dispatcher.UIThread.Post(async () => await OfferAppSetupIfNeededAsync(), DispatcherPriority.Background);
     }
 
-    protected override async void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
+    protected override async void OnKeyDown(KeyEventArgs e)
     {
-        base.OnPreviewKeyDown(e);
+        base.OnKeyDown(e);
 
         if (e.Key == Key.Space)
         {
@@ -78,14 +154,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.Key == Key.Left && Keyboard.Modifiers == ModifierKeys.Control)
+        if (e.Key == Key.Left && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             await GoToPreviousTrackAsync();
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Right && Keyboard.Modifiers == ModifierKeys.Control)
+        if (e.Key == Key.Right && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             await GoToNextTrackAsync();
             e.Handled = true;
@@ -106,56 +182,52 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Multiselect = true,
+            AllowMultiple = true,
             Title = "Select audio or video files",
-            Filter = MediaFileTypes.OpenFileDialogFilter
-        };
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Media files")
+                {
+                    Patterns = [.. MediaFileTypes.SupportedExtensions.Select(static extension => $"*{extension}")]
+                }
+            ]
+        });
 
-        if (dialog.ShowDialog(this) == true)
+        var added = AddSources(ResolveStoragePaths(files), append: false, shuffle: false);
+        if (added.Count > 0)
         {
-            var added = AddSources(dialog.FileNames, append: false, shuffle: false);
-            if (added.Count > 0)
-            {
-                await StartTrackAsync(0);
-            }
+            await StartTrackAsync(0);
         }
     }
 
-    private async void AddAlbumButton_Click(object sender, RoutedEventArgs e)
+    private async void AddAlbumButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        using var dialog = new Forms.FolderBrowserDialog
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Description = "Select an album folder to append to the queue",
-            UseDescriptionForTitle = true,
-            ShowNewFolderButton = false,
-            AutoUpgradeEnabled = true
-        };
+            AllowMultiple = false,
+            Title = "Select an album folder to append to the queue"
+        });
 
-        if (dialog.ShowDialog() != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
-        {
-            return;
-        }
-
-        var added = AddSources([dialog.SelectedPath], append: true, shuffle: false);
+        var added = AddSources(ResolveStoragePaths(folders), append: true, shuffle: false);
         if (added.Count > 0 && _currentIndex < 0)
         {
             await StartTrackAsync(0);
         }
     }
 
-    private async void AddSourceButton_Click(object sender, RoutedEventArgs e) => await AddSourceFromInputAsync();
+    private async void AddSourceButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await AddSourceFromInputAsync();
 
-    private async void PrevButton_Click(object sender, RoutedEventArgs e) => await GoToPreviousTrackAsync();
+    private async void PrevButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await GoToPreviousTrackAsync();
 
-    private async void PlayPauseButton_Click(object sender, RoutedEventArgs e) => await TogglePlaybackAsync();
+    private async void PlayPauseButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await TogglePlaybackAsync();
 
-    private async void NextButton_Click(object sender, RoutedEventArgs e) => await GoToNextTrackAsync();
+    private async void NextButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await GoToNextTrackAsync();
 
-    private void LoopButton_Click(object sender, RoutedEventArgs e)
+    private void LoopButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         _loopMode = _loopMode switch
         {
@@ -168,70 +240,26 @@ public partial class MainWindow : Window
         UpdateUiState();
     }
 
-    private void Player_MediaOpened(object sender, RoutedEventArgs e)
-    {
-        _isPreparingTrack = false;
-        _isMediaLoaded = true;
-        _isPlaying = true;
-        _positionTimer.Start();
-        UpdateSeekUi();
-        Player.Play();
-        RecordTrackHistory();
-        UpdateDiscordPresence();
-        UpdateUiState();
-    }
+    private void SeekSlider_PointerPressed(object? sender, PointerPressedEventArgs e) => _isDraggingSeekBar = true;
 
-    private async void Player_MediaEnded(object sender, RoutedEventArgs e)
-    {
-        _positionTimer.Stop();
-
-        if (_loopMode == LoopMode.One)
-        {
-            await StartTrackAsync(_currentIndex);
-            return;
-        }
-
-        if (_currentIndex < _queue.Count - 1)
-        {
-            await StartTrackAsync(_currentIndex + 1);
-            return;
-        }
-
-        if (_loopMode == LoopMode.All && _queue.Count > 0)
-        {
-            await StartTrackAsync(0);
-            return;
-        }
-
-        _isPlaying = false;
-        _isMediaLoaded = false;
-        _discordPresence.Clear();
-        UpdateUiState();
-    }
-
-    private void Player_MediaFailed(object sender, ExceptionRoutedEventArgs e)
-    {
-        HandlePlaybackFailure(e.ErrorException);
-    }
-
-    private void SeekSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _isDraggingSeekBar = true;
-
-    private void SeekSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void SeekSlider_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         _isDraggingSeekBar = false;
         ApplySeekFromSlider();
     }
 
-    private void SeekSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SeekSlider_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (_isDraggingSeekBar)
+        if (e.Property != RangeBase.ValueProperty || !_isDraggingSeekBar)
         {
-            var target = TimeSpan.FromSeconds(SeekSlider.Value);
-            ElapsedText.Text = FormatTime(target);
+            return;
         }
+
+        var target = TimeSpan.FromSeconds(_seekSlider.Value);
+        _elapsedText.Text = FormatTime(target);
     }
 
-    private async void SourceInputTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private async void SourceInputTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
         {
@@ -242,39 +270,31 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void Window_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
+    private void Window_DragOver(object? sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
-        {
-            e.Effects = System.Windows.DragDropEffects.Copy;
-        }
-        else
-        {
-            e.Effects = System.Windows.DragDropEffects.None;
-        }
-
+        e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
-    private async void AlbumHistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private async void AlbumHistoryList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (AlbumHistoryList.SelectedItem is AlbumHistoryEntry entry)
+        if (_albumHistoryList.SelectedItem is AlbumHistoryEntry entry)
         {
             await ReplayAlbumHistoryAsync(entry);
         }
     }
 
-    private async void TrackHistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private async void TrackHistoryList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (TrackHistoryList.SelectedItem is TrackHistoryEntry entry)
+        if (_trackHistoryList.SelectedItem is TrackHistoryEntry entry)
         {
             await ReplayTrackHistoryAsync(entry);
         }
     }
 
-    private async void QueueList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private async void QueueList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (QueueList.SelectedItem is not PlaybackItem item)
+        if (_queueList.SelectedItem is not PlaybackItem item)
         {
             return;
         }
@@ -286,14 +306,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Window_Drop(object sender, System.Windows.DragEventArgs e)
+    private async void Window_Drop(object? sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        var droppedItems = e.Data.GetFiles();
+        if (droppedItems is null)
         {
             return;
         }
 
-        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] droppedPaths)
+        var droppedPaths = ResolveStoragePaths(droppedItems);
+        if (droppedPaths.Count == 0)
         {
             return;
         }
@@ -389,20 +411,11 @@ public partial class MainWindow : Window
 
         _positionTimer.Stop();
         ResetTransportUi();
+        StopPlayback(clearSource: true);
 
-        try
-        {
-            Player.Stop();
-            Player.Source = null;
-        }
-        catch
-        {
-        }
-
-        TrackTitleText.Text = item.DisplayName;
-        QueueInfoText.Text = BuildQueueText(item);
-        QueueList.SelectedIndex = index;
-        QueueList.ScrollIntoView(item);
+        _trackTitleText.Text = item.DisplayName;
+        _queueInfoText.Text = BuildQueueText(item);
+        _queueList.SelectedIndex = index;
         SetStatus(BuildPreparationStatus(item));
         UpdateUiState();
 
@@ -411,9 +424,11 @@ public partial class MainWindow : Window
             var playbackPath = await ResolvePlaybackPathAsync(item, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            Player.Source = new Uri(playbackPath, UriKind.Absolute);
-            Player.Position = TimeSpan.Zero;
-            Player.Play();
+            var player = EnsurePlaybackController();
+            if (!player.Play(playbackPath))
+            {
+                throw new InvalidOperationException("Could not start playback with LibVLC.");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -422,7 +437,7 @@ public partial class MainWindow : Window
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                HandlePlaybackFailure(ex);
+                await HandlePlaybackFailureAsync(ex);
             }
         }
         finally
@@ -461,15 +476,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        var player = EnsurePlaybackController();
         if (_isPlaying)
         {
-            Player.Pause();
+            player.Pause();
             _positionTimer.Stop();
             _isPlaying = false;
         }
         else
         {
-            Player.Play();
+            player.Resume();
             _positionTimer.Start();
             _isPlaying = true;
         }
@@ -485,9 +501,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_isMediaLoaded && Player.Position > TimeSpan.FromSeconds(3))
+        if (_isMediaLoaded && _playbackController is not null && _playbackController.Position > TimeSpan.FromSeconds(3))
         {
-            Player.Position = TimeSpan.Zero;
+            _playbackController.Position = TimeSpan.Zero;
             UpdateSeekUi();
             return;
         }
@@ -536,85 +552,93 @@ public partial class MainWindow : Window
 
     private void SeekBy(TimeSpan offset)
     {
-        if (!_isMediaLoaded || !Player.NaturalDuration.HasTimeSpan)
+        if (!_isMediaLoaded || _playbackController is null || _playbackController.Duration <= TimeSpan.Zero)
         {
             return;
         }
 
-        var duration = Player.NaturalDuration.TimeSpan;
-        var nextPosition = Player.Position + offset;
+        var duration = _playbackController.Duration;
+        var nextPosition = _playbackController.Position + offset;
         nextPosition = TimeSpan.FromSeconds(Math.Clamp(nextPosition.TotalSeconds, 0, duration.TotalSeconds));
-        Player.Position = nextPosition;
+        _playbackController.Position = nextPosition;
         UpdateSeekUi();
     }
 
     private void ApplySeekFromSlider()
     {
-        if (!_isMediaLoaded || !Player.NaturalDuration.HasTimeSpan)
+        if (!_isMediaLoaded || _playbackController is null || _playbackController.Duration <= TimeSpan.Zero)
         {
             return;
         }
 
-        Player.Position = TimeSpan.FromSeconds(SeekSlider.Value);
+        _playbackController.Position = TimeSpan.FromSeconds(_seekSlider.Value);
         UpdateSeekUi();
     }
 
     private void UpdateSeekUi()
     {
-        if (!_isMediaLoaded || !Player.NaturalDuration.HasTimeSpan)
+        if (!_isMediaLoaded || _playbackController is null || _playbackController.Duration <= TimeSpan.Zero)
         {
-            ElapsedText.Text = "00:00";
-            RemainingText.Text = "00:00";
+            _elapsedText.Text = "00:00";
+            _remainingText.Text = "00:00";
             return;
         }
 
-        var duration = Player.NaturalDuration.TimeSpan;
-        var position = Player.Position;
+        var duration = _playbackController.Duration;
+        var position = _playbackController.Position;
 
         if (!_isDraggingSeekBar)
         {
-            SeekSlider.Maximum = Math.Max(duration.TotalSeconds, 1);
-            SeekSlider.Value = Math.Clamp(position.TotalSeconds, 0, SeekSlider.Maximum);
+            _seekSlider.Maximum = Math.Max(duration.TotalSeconds, 1);
+            _seekSlider.Value = Math.Clamp(position.TotalSeconds, 0, _seekSlider.Maximum);
         }
 
-        ElapsedText.Text = FormatTime(position);
-        RemainingText.Text = $"-{FormatTime(duration - position)}";
+        _elapsedText.Text = FormatTime(position);
+        _remainingText.Text = $"-{FormatTime(duration - position)}";
     }
 
     private void UpdateUiState()
     {
-        PlayPauseButton.Content = _isPreparingTrack ? "Loading" : _isPlaying ? "Pause" : "Play";
-        PlayPauseButton.IsEnabled = _queue.Count > 0 && !_isPreparingTrack;
-        PrevButton.IsEnabled = _queue.Count > 0;
-        NextButton.IsEnabled = _queue.Count > 0;
-        SeekSlider.IsEnabled = _isMediaLoaded && !_isPreparingTrack;
-        PreparationBar.Visibility = _isPreparingTrack ? Visibility.Visible : Visibility.Collapsed;
+        _playPauseButton.Content = _isPreparingTrack ? "Loading" : _isPlaying ? "Pause" : "Play";
+        _playPauseButton.IsEnabled = _queue.Count > 0 && !_isPreparingTrack && !_isRunningAppSetup;
+        _prevButton.IsEnabled = _queue.Count > 0 && !_isRunningAppSetup;
+        _nextButton.IsEnabled = _queue.Count > 0 && !_isRunningAppSetup;
+        _openButton.IsEnabled = !_isRunningAppSetup;
+        _addAlbumButton.IsEnabled = !_isRunningAppSetup;
+        _addSourceButton.IsEnabled = !_isRunningAppSetup;
+        _loopButton.IsEnabled = !_isRunningAppSetup;
+        _sourceInputTextBox.IsEnabled = !_isRunningAppSetup;
+        _seekSlider.IsEnabled = _isMediaLoaded && !_isPreparingTrack && !_isRunningAppSetup;
+        _preparationBar.IsVisible = _isPreparingTrack || _isRunningAppSetup;
 
-        QueueSummaryText.Text = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
-        QueueCountText.Text = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
-        CurrentIndexText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
+        _queueSummaryText.Text = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
+        _queueCountText.Text = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
+        _currentIndexText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
             ? $"Track {_currentIndex + 1}/{_queue.Count}"
             : "Track --";
-        SourceBadgeText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
+        _sourceBadgeText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
             ? _queue[_currentIndex].SourceLabel
             : "Standby";
 
         if (_queue.Count == 0)
         {
-            QueueList.SelectedIndex = -1;
-            TrackTitleText.Text = "Drop files or use Open.";
-            QueueInfoText.Text = "Load a folder, pick files, or paste a URL to start playback.";
-            SetStatus("Ready for local files, albums, and URL playback.");
+            _queueList.SelectedIndex = -1;
+            _trackTitleText.Text = "Drop files or use Open.";
+            _queueInfoText.Text = "Load a folder, pick files, or paste a URL to start playback.";
+            if (!_isRunningAppSetup)
+            {
+                SetStatus("Ready for local files, albums, and URL playback.");
+            }
             return;
         }
 
         if (_currentIndex >= 0 && _currentIndex < _queue.Count)
         {
-            QueueList.SelectedIndex = _currentIndex;
-            QueueInfoText.Text = BuildQueueText(_queue[_currentIndex]);
+            _queueList.SelectedIndex = _currentIndex;
+            _queueInfoText.Text = BuildQueueText(_queue[_currentIndex]);
         }
 
-        if (_isPreparingTrack)
+        if (_isPreparingTrack || _isRunningAppSetup)
         {
             return;
         }
@@ -633,15 +657,6 @@ public partial class MainWindow : Window
         }
     }
 
-    protected override void OnClosed(EventArgs e)
-    {
-        CancelTrackPreparation();
-        StopPlayback(clearSource: true);
-        _ffmpegAudioCache.Dispose();
-        _discordPresence.Dispose();
-        base.OnClosed(e);
-    }
-
     private void UpdateLoopButton()
     {
         var loopText = _loopMode switch
@@ -651,8 +666,8 @@ public partial class MainWindow : Window
             _ => "Loop All"
         };
 
-        LoopButton.Content = loopText.Replace("Loop ", "Loop: ");
-        LoopModeBadgeText.Text = loopText;
+        _loopButton.Content = loopText.Replace("Loop ", "Loop: ");
+        _loopModeBadgeText.Text = loopText;
     }
 
     private string BuildQueueText(PlaybackItem item)
@@ -689,7 +704,7 @@ public partial class MainWindow : Window
     private static bool IsSupportedMediaFile(string path)
         => SupportedExtensions.Contains(Path.GetExtension(path));
 
-    private void HandlePlaybackFailure(Exception? exception)
+    private async Task HandlePlaybackFailureAsync(Exception? exception)
     {
         _positionTimer.Stop();
         _isPreparingTrack = false;
@@ -706,18 +721,18 @@ public partial class MainWindow : Window
             var extension = Path.GetExtension(item.Path);
             if (_ytDlpAudioCache.IsSupportedUrl(item.Path) && !_ytDlpAudioCache.IsAvailable)
             {
-                message = "yt-dlp.exe was not found in PATH, so this URL could not be fetched.";
+                message = "yt-dlp was not found in PATH or the bundled tools directory, so this URL could not be fetched.";
             }
             else if ((extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) ||
                       extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) ||
                       extension.Equals(".opus", StringComparison.OrdinalIgnoreCase)) &&
                      !_ffmpegAudioCache.IsAvailable)
             {
-                message = "ffmpeg.exe was not found in PATH, so this file could not be decoded.";
+                message = "ffmpeg was not found in PATH or the bundled tools directory, so this file could not be decoded.";
             }
         }
 
-        System.Windows.MessageBox.Show(this, $"Could not play media.\n{message}", "Playback error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        await DialogService.ShowInfoAsync(this, "Playback error", $"Could not play media.\n{message}");
     }
 
     private static string FormatTime(TimeSpan time)
@@ -734,15 +749,15 @@ public partial class MainWindow : Window
 
     private async Task AddSourceFromInputAsync()
     {
-        var source = NormalizeSourceInput(SourceInputTextBox.Text);
+        var source = NormalizeSourceInput(_sourceInputTextBox.Text);
         if (!TryResolveInputSource(source, out var resolvedSource, out var validationMessage))
         {
-            System.Windows.MessageBox.Show(this, validationMessage, "Invalid source", MessageBoxButton.OK, MessageBoxImage.Information);
+            await DialogService.ShowInfoAsync(this, "Invalid source", validationMessage);
             return;
         }
 
         var added = AddSources([resolvedSource], append: _queue.Count > 0, shuffle: false);
-        SourceInputTextBox.Clear();
+        _sourceInputTextBox.Text = string.Empty;
 
         if (added.Count > 0 && _currentIndex < 0)
         {
@@ -756,6 +771,64 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task OfferAppSetupIfNeededAsync()
+    {
+        if (_hasCheckedAppSetup)
+        {
+            return;
+        }
+
+        _hasCheckedAppSetup = true;
+        if (!_appSetupCoordinator.ShouldOfferSetup())
+        {
+            return;
+        }
+
+        var message =
+            "Simple Music Player can finish setting itself up for this folder." +
+            "\n\nIt will add a Start Menu shortcut, Explorer menu entries, file association hints, and download optional playback tools if they are missing." +
+            "\n\nRun setup now?";
+
+        var shouldRunSetup = await DialogService.ShowConfirmationAsync(
+            this,
+            "Set up Simple Music Player",
+            message,
+            "Run setup",
+            "Later");
+
+        if (!shouldRunSetup)
+        {
+            _appSetupCoordinator.MarkDismissed();
+            return;
+        }
+
+        _isRunningAppSetup = true;
+        SetStatus("Running first-time setup...");
+        UpdateUiState();
+
+        AppSetupRunResult result;
+        try
+        {
+            result = await _appSetupCoordinator.RunSetupAsync(redownloadTools: false, CancellationToken.None);
+        }
+        finally
+        {
+            _isRunningAppSetup = false;
+            ReloadExternalToolCaches();
+            UpdateUiState();
+        }
+
+        if (result.Success)
+        {
+            SetStatus("Setup complete.");
+            await DialogService.ShowInfoAsync(this, "Setup complete", "Setup finished. Shortcuts and optional tools are ready for this app folder.");
+            return;
+        }
+
+        SetStatus("Setup incomplete.");
+        await DialogService.ShowInfoAsync(this, "Setup error", $"Setup could not finish.\n{result.Message}");
+    }
+
     private async Task<string> ResolvePlaybackPathAsync(PlaybackItem item, CancellationToken cancellationToken)
     {
         if (_ytDlpAudioCache.IsSupportedUrl(item.Path))
@@ -764,12 +837,12 @@ public partial class MainWindow : Window
             var cachedAudio = await _ytDlpAudioCache.GetOrDownloadAsync(item.Path, cancellationToken);
             if (_ffmpegAudioCache.RequiresTranscode(cachedAudio.FilePath) && !_ffmpegAudioCache.IsAvailable)
             {
-                throw new InvalidOperationException("ffmpeg.exe was not found in PATH, so this downloaded audio could not be decoded.");
+                throw new InvalidOperationException("ffmpeg was not found in PATH or the bundled tools directory, so this downloaded audio could not be decoded.");
             }
 
             item.UpdateDisplayName(cachedAudio.Title);
-            TrackTitleText.Text = item.DisplayName;
-            QueueInfoText.Text = cachedAudio.WasCached
+            _trackTitleText.Text = item.DisplayName;
+            _queueInfoText.Text = cachedAudio.WasCached
                 ? $"URL {_currentIndex + 1}/{_queue.Count}  cache ready  {cachedAudio.SourceUrl}"
                 : $"URL {_currentIndex + 1}/{_queue.Count}  downloaded  {cachedAudio.SourceUrl}";
 
@@ -791,7 +864,7 @@ public partial class MainWindow : Window
         {
             if (!_ffmpegAudioCache.IsAvailable)
             {
-                throw new InvalidOperationException("ffmpeg.exe was not found in PATH, so this file could not be decoded.");
+                throw new InvalidOperationException("ffmpeg was not found in PATH or the bundled tools directory, so this file could not be decoded.");
             }
 
             SetStatus("Converting this source for reliable playback...");
@@ -877,7 +950,7 @@ public partial class MainWindow : Window
     {
         if (!Directory.Exists(entry.AlbumPath))
         {
-            System.Windows.MessageBox.Show(this, "Album folder was not found.", "History", MessageBoxButton.OK, MessageBoxImage.Information);
+            await DialogService.ShowInfoAsync(this, "History", "Album folder was not found.");
             return;
         }
 
@@ -903,7 +976,7 @@ public partial class MainWindow : Window
 
         if (!File.Exists(entry.SourcePath))
         {
-            System.Windows.MessageBox.Show(this, "Track file was not found.", "History", MessageBoxButton.OK, MessageBoxImage.Information);
+            await DialogService.ShowInfoAsync(this, "History", "Track file was not found.");
             return;
         }
 
@@ -991,11 +1064,7 @@ public partial class MainWindow : Window
 
         try
         {
-            Player.Stop();
-            if (clearSource)
-            {
-                Player.Source = null;
-            }
+            _playbackController?.Stop(clearSource);
         }
         catch
         {
@@ -1007,15 +1076,15 @@ public partial class MainWindow : Window
 
     private void ResetTransportUi()
     {
-        SeekSlider.Value = 0;
-        SeekSlider.Maximum = 1;
-        ElapsedText.Text = "00:00";
-        RemainingText.Text = "00:00";
+        _seekSlider.Value = 0;
+        _seekSlider.Maximum = 1;
+        _elapsedText.Text = "00:00";
+        _remainingText.Text = "00:00";
     }
 
     private void SetStatus(string message)
     {
-        StatusText.Text = message;
+        _statusText.Text = message;
     }
 
     private string BuildPreparationStatus(PlaybackItem item)
@@ -1032,6 +1101,13 @@ public partial class MainWindow : Window
             var swapIndex = _random.Next(i + 1);
             (items[i], items[swapIndex]) = (items[swapIndex], items[i]);
         }
+    }
+
+    private void ReloadExternalToolCaches()
+    {
+        _ffmpegAudioCache.Dispose();
+        _ffmpegAudioCache = new FfmpegAudioCache();
+        _ytDlpAudioCache = new YtDlpAudioCache();
     }
 
     private static string NormalizeSourceInput(string? input)
@@ -1081,4 +1157,81 @@ public partial class MainWindow : Window
         validationMessage = "Enter a valid URL, existing file path, or existing folder path.";
         return false;
     }
+
+    private async Task ContinueAfterMediaEndedAsync()
+    {
+        _positionTimer.Stop();
+
+        if (_loopMode == LoopMode.One)
+        {
+            await StartTrackAsync(_currentIndex);
+            return;
+        }
+
+        if (_currentIndex < _queue.Count - 1)
+        {
+            await StartTrackAsync(_currentIndex + 1);
+            return;
+        }
+
+        if (_loopMode == LoopMode.All && _queue.Count > 0)
+        {
+            await StartTrackAsync(0);
+            return;
+        }
+
+        _isPlaying = false;
+        _isMediaLoaded = false;
+        _discordPresence.Clear();
+        UpdateUiState();
+    }
+
+    private PlaybackController EnsurePlaybackController()
+    {
+        if (_playbackController is not null)
+        {
+            return _playbackController;
+        }
+
+        _playbackController = new PlaybackController();
+        _playbackController.PlaybackStarted += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            _isPreparingTrack = false;
+            _isMediaLoaded = true;
+            _isPlaying = true;
+            _positionTimer.Start();
+            UpdateSeekUi();
+            RecordTrackHistory();
+            UpdateDiscordPresence();
+            UpdateUiState();
+        });
+        _playbackController.PlaybackEnded += (_, _) => Dispatcher.UIThread.Post(async () => await ContinueAfterMediaEndedAsync());
+        _playbackController.PlaybackFailed += message => Dispatcher.UIThread.Post(async () => await HandlePlaybackFailureAsync(new InvalidOperationException(message)));
+        return _playbackController;
+    }
+
+    private void DisposeResources()
+    {
+        CancelTrackPreparation();
+        try
+        {
+            _playbackController?.Stop(clearMedia: true);
+        }
+        catch
+        {
+        }
+        _ffmpegAudioCache.Dispose();
+        _playbackController?.Dispose();
+        _discordPresence.Dispose();
+    }
+
+    private static IReadOnlyList<string> ResolveStoragePaths(IEnumerable<IStorageItem> storageItems)
+        => storageItems
+            .Select(static item => item.Path)
+            .Where(static uri => uri.IsAbsoluteUri && uri.IsFile)
+            .Select(static uri => Uri.UnescapeDataString(uri.LocalPath))
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .ToList();
+
+    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

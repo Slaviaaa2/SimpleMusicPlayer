@@ -1,21 +1,24 @@
 param(
-    [string]$ProjectPath = (Join-Path $PSScriptRoot "..\SimpleMusicPlayer.csproj"),
-    [string]$InstallDir = "D:\Tools\SimpleMusicPlayer",
+    [string]$AppDir = $PSScriptRoot,
     [string]$ShortcutName = "Simple Music Player.lnk",
-    [switch]$SkipToolDownloads
+    [switch]$SkipToolDownloads,
+    [switch]$RedownloadTools
 )
 
 $ErrorActionPreference = "Stop"
 
-$projectFullPath = [System.IO.Path]::GetFullPath($ProjectPath)
-$installFullPath = [System.IO.Path]::GetFullPath($InstallDir)
-$toolsRoot = Join-Path $installFullPath "tools"
+$appFullPath = [System.IO.Path]::GetFullPath($AppDir)
+$targetPath = Join-Path $appFullPath "SimpleMusicPlayer.exe"
+if (-not (Test-Path -LiteralPath $targetPath))
+{
+    throw "SimpleMusicPlayer.exe was not found in '$appFullPath'. Extract the release zip first, then run this script from the extracted app folder."
+}
+
+$toolsRoot = Join-Path $appFullPath "tools"
 $ytDlpDir = Join-Path $toolsRoot "yt-dlp"
+$denoDir = Join-Path $toolsRoot "deno"
 $ffmpegDir = Join-Path $toolsRoot "ffmpeg"
-
-New-Item -ItemType Directory -Path $installFullPath -Force | Out-Null
-
-dotnet publish $projectFullPath -c Release -o $installFullPath
+$setupStatePath = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "SimpleMusicPlayer\setup-state.json"
 
 function Download-File
 {
@@ -28,12 +31,34 @@ function Download-File
     Invoke-WebRequest -Uri $Url -OutFile $DestinationPath
 }
 
+function Save-SetupState
+{
+    $stateDirectory = Split-Path -Parent $setupStatePath
+    New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
+
+    $state = [ordered]@{
+        CompletedInstallPath = $appFullPath
+        CompletedAt = (Get-Date).ToString("O")
+        DismissedInstallPath = $null
+        DismissedAt = $null
+    }
+
+    $state | ConvertTo-Json | Set-Content -LiteralPath $setupStatePath -Encoding UTF8
+}
+
 function Install-YtDlp
 {
     param([Parameter(Mandatory = $true)][string]$DestinationDirectory)
 
     New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
     $ytDlpPath = Join-Path $DestinationDirectory "yt-dlp.exe"
+
+    if ((-not $RedownloadTools) -and (Test-Path -LiteralPath $ytDlpPath))
+    {
+        Write-Host "yt-dlp already exists at $ytDlpPath. Skipping download."
+        return
+    }
+
     Download-File -Url "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -DestinationPath $ytDlpPath
     Write-Host "Installed yt-dlp to $ytDlpPath"
 }
@@ -41,6 +66,13 @@ function Install-YtDlp
 function Install-Ffmpeg
 {
     param([Parameter(Mandatory = $true)][string]$DestinationDirectory)
+
+    $ffmpegPath = Join-Path $DestinationDirectory "ffmpeg.exe"
+    if ((-not $RedownloadTools) -and (Test-Path -LiteralPath $ffmpegPath))
+    {
+        Write-Host "ffmpeg already exists at $ffmpegPath. Skipping download."
+        return
+    }
 
     $archivePath = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-ffmpeg-" + [guid]::NewGuid().ToString("N") + ".zip")
     $extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-ffmpeg-" + [guid]::NewGuid().ToString("N"))
@@ -71,7 +103,7 @@ function Install-Ffmpeg
             }
         }
 
-        if (-not (Test-Path -LiteralPath (Join-Path $DestinationDirectory "ffmpeg.exe")))
+        if (-not (Test-Path -LiteralPath $ffmpegPath))
         {
             throw "ffmpeg.exe was not found after extracting the archive."
         }
@@ -92,29 +124,73 @@ function Install-Ffmpeg
     }
 }
 
+function Install-Deno
+{
+    param([Parameter(Mandatory = $true)][string]$DestinationDirectory)
+
+    $denoPath = Join-Path $DestinationDirectory "deno.exe"
+    if ((-not $RedownloadTools) -and (Test-Path -LiteralPath $denoPath))
+    {
+        Write-Host "deno already exists at $denoPath. Skipping download."
+        return
+    }
+
+    $archivePath = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-deno-" + [guid]::NewGuid().ToString("N") + ".zip")
+    $extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-deno-" + [guid]::NewGuid().ToString("N"))
+
+    try
+    {
+        Download-File -Url "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -DestinationPath $archivePath
+        New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
+        New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
+
+        $sourcePath = Join-Path $extractRoot "deno.exe"
+        if (-not (Test-Path -LiteralPath $sourcePath))
+        {
+            throw "deno.exe was not found after extracting the archive."
+        }
+
+        Copy-Item -LiteralPath $sourcePath -Destination $denoPath -Force
+        Write-Host "Installed deno to $denoPath"
+    }
+    finally
+    {
+        if (Test-Path -LiteralPath $archivePath)
+        {
+            Remove-Item -LiteralPath $archivePath -Force
+        }
+
+        if (Test-Path -LiteralPath $extractRoot)
+        {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force
+        }
+    }
+}
+
 if (-not $SkipToolDownloads)
 {
     New-Item -ItemType Directory -Path $toolsRoot -Force | Out-Null
     Install-YtDlp -DestinationDirectory $ytDlpDir
+    Install-Deno -DestinationDirectory $denoDir
     Install-Ffmpeg -DestinationDirectory $ffmpegDir
 }
 
 $programsPath = [Environment]::GetFolderPath("Programs")
 $shortcutPath = Join-Path $programsPath $ShortcutName
-$targetPath = Join-Path $installFullPath "SimpleMusicPlayer.exe"
 
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $targetPath
-$shortcut.WorkingDirectory = $installFullPath
+$shortcut.WorkingDirectory = $appFullPath
 $shortcut.IconLocation = $targetPath
 $shortcut.Save()
 
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $pathEntries = @($userPath -split ';' | Where-Object { $_ })
-if ($pathEntries -notcontains $installFullPath)
+if ($pathEntries -notcontains $appFullPath)
 {
-    $updatedPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $installFullPath } else { "$userPath;$installFullPath" }
+    $updatedPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $appFullPath } else { "$userPath;$appFullPath" }
     [Environment]::SetEnvironmentVariable("Path", $updatedPath, "User")
 }
 
@@ -181,16 +257,22 @@ foreach ($extension in $supportedExtensions)
     New-ItemProperty -Path $openWithProgidsKey -Name $progId -Value "" -PropertyType String -Force | Out-Null
 }
 
-Write-Host "Published to $installFullPath"
+Save-SetupState
+
+Write-Host "Integrated app folder: $appFullPath"
 Write-Host "Shortcut created at $shortcutPath"
-Write-Host "Added to user PATH: $installFullPath"
+Write-Host "Added to user PATH: $appFullPath"
 Write-Host "Explorer context menu entries installed."
 Write-Host "Registered media file associations for Default apps / Open with."
 if ($SkipToolDownloads)
 {
-    Write-Host "Skipped yt-dlp / ffmpeg download."
+    Write-Host "Skipped yt-dlp / deno / ffmpeg download."
+}
+elseif ($RedownloadTools)
+{
+    Write-Host "Redownloaded bundled tools under $toolsRoot"
 }
 else
 {
-    Write-Host "Installed bundled tools under $toolsRoot"
+    Write-Host "Ensured bundled tools under $toolsRoot"
 }

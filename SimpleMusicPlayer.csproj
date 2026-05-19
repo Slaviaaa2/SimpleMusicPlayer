@@ -1,26 +1,36 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SimpleMusicPlayer</AssemblyName>
     <RootNamespace>SimpleMusicPlayer</RootNamespace>
-    <Version>0.4.1</Version>
-    <AssemblyVersion>0.4.1.0</AssemblyVersion>
-    <FileVersion>0.4.1.0</FileVersion>
-    <InformationalVersion>0.4.1</InformationalVersion>
+    <Version>0.5.0</Version>
+    <AssemblyVersion>0.5.0.0</AssemblyVersion>
+    <FileVersion>0.5.0.0</FileVersion>
+    <InformationalVersion>0.5.0</InformationalVersion>
     <Authors>zeros</Authors>
     <Company>zeros</Company>
     <Product>Simple Music Player</Product>
-    <Description>Minimal WPF music player for Windows with album loading, queue control, and CLI startup options.</Description>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Description>Minimal cross-platform desktop music player with album loading, queue control, URL caching, and CLI startup options.</Description>
     <UseAppHost>true</UseAppHost>
-    <PublishDir Condition="'$(Configuration)' == 'Release'">D:\Tools\SimpleMusicPlayer\</PublishDir>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.7" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.7" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.7" />
     <PackageReference Include="DiscordRichPresence" Version="1.6.1.70" />
+    <PackageReference Include="LibVLCSharp" Version="3.9.4" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+    <None Include="scripts\Install-Release.ps1">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>Install-SimpleMusicPlayer.ps1</TargetPath>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">
+    <PackageReference Include="VideoLAN.LibVLC.Mac" Version="3.1.2" />
   </ItemGroup>
 </Project>
