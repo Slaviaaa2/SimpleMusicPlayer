@@ -1,17 +1,103 @@
 param(
     [string]$ProjectPath = (Join-Path $PSScriptRoot "..\SimpleMusicPlayer.csproj"),
     [string]$InstallDir = "D:\Tools\SimpleMusicPlayer",
-    [string]$ShortcutName = "Simple Music Player.lnk"
+    [string]$ShortcutName = "Simple Music Player.lnk",
+    [switch]$SkipToolDownloads
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectFullPath = [System.IO.Path]::GetFullPath($ProjectPath)
 $installFullPath = [System.IO.Path]::GetFullPath($InstallDir)
+$toolsRoot = Join-Path $installFullPath "tools"
+$ytDlpDir = Join-Path $toolsRoot "yt-dlp"
+$ffmpegDir = Join-Path $toolsRoot "ffmpeg"
 
 New-Item -ItemType Directory -Path $installFullPath -Force | Out-Null
 
 dotnet publish $projectFullPath -c Release -o $installFullPath
+
+function Download-File
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    Write-Host "Downloading $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $DestinationPath
+}
+
+function Install-YtDlp
+{
+    param([Parameter(Mandatory = $true)][string]$DestinationDirectory)
+
+    New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
+    $ytDlpPath = Join-Path $DestinationDirectory "yt-dlp.exe"
+    Download-File -Url "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -DestinationPath $ytDlpPath
+    Write-Host "Installed yt-dlp to $ytDlpPath"
+}
+
+function Install-Ffmpeg
+{
+    param([Parameter(Mandatory = $true)][string]$DestinationDirectory)
+
+    $archivePath = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-ffmpeg-" + [guid]::NewGuid().ToString("N") + ".zip")
+    $extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("simplemusicplayer-ffmpeg-" + [guid]::NewGuid().ToString("N"))
+
+    try
+    {
+        Download-File -Url "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -DestinationPath $archivePath
+        New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
+
+        $binDirectory = Get-ChildItem -Path $extractRoot -Directory -Recurse |
+            Where-Object { $_.Name -eq "bin" } |
+            Select-Object -First 1
+
+        if (-not $binDirectory)
+        {
+            throw "Could not locate ffmpeg bin directory in extracted archive."
+        }
+
+        New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
+
+        foreach ($toolName in @("ffmpeg.exe", "ffprobe.exe", "ffplay.exe"))
+        {
+            $sourcePath = Join-Path $binDirectory.FullName $toolName
+            if (Test-Path -LiteralPath $sourcePath)
+            {
+                Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationDirectory $toolName) -Force
+            }
+        }
+
+        if (-not (Test-Path -LiteralPath (Join-Path $DestinationDirectory "ffmpeg.exe")))
+        {
+            throw "ffmpeg.exe was not found after extracting the archive."
+        }
+
+        Write-Host "Installed ffmpeg tools to $DestinationDirectory"
+    }
+    finally
+    {
+        if (Test-Path -LiteralPath $archivePath)
+        {
+            Remove-Item -LiteralPath $archivePath -Force
+        }
+
+        if (Test-Path -LiteralPath $extractRoot)
+        {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force
+        }
+    }
+}
+
+if (-not $SkipToolDownloads)
+{
+    New-Item -ItemType Directory -Path $toolsRoot -Force | Out-Null
+    Install-YtDlp -DestinationDirectory $ytDlpDir
+    Install-Ffmpeg -DestinationDirectory $ffmpegDir
+}
 
 $programsPath = [Environment]::GetFolderPath("Programs")
 $shortcutPath = Join-Path $programsPath $ShortcutName
@@ -81,7 +167,7 @@ New-Item -Path $registeredApplicationsKey -Force | Out-Null
 New-ItemProperty -Path $registeredApplicationsKey -Name "Simple Music Player" -Value "Software\SimpleMusicPlayer\Capabilities" -PropertyType String -Force | Out-Null
 
 $supportedExtensions = @(
-    ".mp3", ".wav", ".aac", ".m4a", ".flac", ".wma", ".ogg",
+    ".mp3", ".wav", ".aac", ".m4a", ".flac", ".wma", ".ogg", ".opus",
     ".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".webm"
 )
 
@@ -100,3 +186,11 @@ Write-Host "Shortcut created at $shortcutPath"
 Write-Host "Added to user PATH: $installFullPath"
 Write-Host "Explorer context menu entries installed."
 Write-Host "Registered media file associations for Default apps / Open with."
+if ($SkipToolDownloads)
+{
+    Write-Host "Skipped yt-dlp / ffmpeg download."
+}
+else
+{
+    Write-Host "Installed bundled tools under $toolsRoot"
+}
