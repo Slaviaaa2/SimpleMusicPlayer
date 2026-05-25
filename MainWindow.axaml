@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="using:SimpleMusicPlayer"
         Title="Simple Music Player"
+        Icon="/Assets/app-icon.ico"
         Width="760"
         Height="540"
         MinWidth="560"

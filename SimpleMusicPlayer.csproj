@@ -15,7 +15,11 @@
     <Product>Simple Music Player</Product>
     <Description>Minimal cross-platform desktop music player with album loading, queue control, URL caching, and CLI startup options.</Description>
     <UseAppHost>true</UseAppHost>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.7" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.7" />
