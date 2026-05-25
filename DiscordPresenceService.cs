@@ -4,21 +4,16 @@ namespace SimpleMusicPlayer;
 
 public sealed class DiscordPresenceService : IDisposable
 {
-    public const string AppIdEnvironmentVariable = "SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID";
+    private const string ApplicationId = "1504140042820522125";
 
     private readonly DiscordRpcClient? _client;
     private readonly bool _isInitialized;
 
-    public DiscordPresenceService(string? applicationId)
+    public DiscordPresenceService()
     {
-        if (string.IsNullOrWhiteSpace(applicationId))
-        {
-            return;
-        }
-
         try
         {
-            _client = new DiscordRpcClient(applicationId.Trim());
+            _client = new DiscordRpcClient(ApplicationId);
             _isInitialized = _client.Initialize();
         }
         catch
@@ -27,23 +22,6 @@ public sealed class DiscordPresenceService : IDisposable
             _client = null;
             _isInitialized = false;
         }
-    }
-
-    public static string? ResolveApplicationId(CliOptions options)
-    {
-        if (!string.IsNullOrWhiteSpace(options.DiscordAppId))
-        {
-            return options.DiscordAppId;
-        }
-
-        var environmentValue = Environment.GetEnvironmentVariable(AppIdEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(environmentValue))
-        {
-            return environmentValue;
-        }
-
-        var envFileValues = EnvFile.LoadFromBaseDirectory();
-        return envFileValues.TryGetValue(AppIdEnvironmentVariable, out var appId) ? appId : null;
     }
 
     public bool IsEnabled => _isInitialized;

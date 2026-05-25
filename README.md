@@ -91,24 +91,7 @@ Linux では `libvlc` 本体はシステム側で入れておく前提です。�
 
 ## Discord Rich Presence
 
-Discord のアクティビティに再生中の曲名を出すには、Discord Developer Portal で作成した `Application ID` を渡します。
-
-```powershell
-$env:SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID="123456789012345678"
-SimpleMusicPlayer "D:\Music\track1.mp3"
-```
-
-または:
-
-```powershell
-SimpleMusicPlayer --discord-app-id 123456789012345678 "D:\Music\track1.mp3"
-```
-
-公開済みバイナリを使う場合は、実行ファイルと同じフォルダに `.env` を置いても読み込めます。
-
-```dotenv
-SIMPLE_MUSIC_PLAYER_DISCORD_APP_ID=123456789012345678
-```
+Discord のアクティビティには、再生中の曲名が自動で表示されます。
 
 ## 開発者向け
 
@@ -142,7 +125,6 @@ dotnet run -- "D:\Music\track1.mp3" "https://www.youtube.com/watch?v=dQw4w9WgXcQ
 - `--shuffle`: 読み込み時にシャッフル
 - `--index <n>`: 開始トラック番号。`0` 始まり
 - `--loop none|all|one`: 初期ループモード
-- `--discord-app-id <id>`: Discord Rich Presence 用の Application ID
 - 位置引数: ローカルファイル / フォルダ / `http(s)` URL
 
 ### ビルド
@@ -177,10 +159,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Release.ps1 -RuntimeI
 
 ## GitHub Release
 
-- GitHub Actions は `v0.5.1` のようなタグ push で `win-x64` `osx-x64` `osx-arm64` `linux-x64` を publish し、それぞれ zip を Release に添付します。
+- GitHub Actions は `v0.5.2` のようなタグ push で `win-x64` `osx-x64` `osx-arm64` `linux-x64` を publish し、それぞれ zip を Release に添付します。
 - `workflow_dispatch` でも同じ artifact を取得できます。
 
 ```powershell
-git tag v0.5.1
-git push origin main --tags
+git tag v0.5.2
+git push origin main v0.5.2
 ```

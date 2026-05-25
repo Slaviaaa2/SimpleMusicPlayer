@@ -119,7 +119,7 @@ public partial class MainWindow : Window
 
         _appSetupCoordinator = new AppSetupCoordinator();
         var options = CliOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
-        _discordPresence = new DiscordPresenceService(DiscordPresenceService.ResolveApplicationId(options));
+        _discordPresence = new DiscordPresenceService();
         _ffmpegAudioCache = new FfmpegAudioCache();
         _historyStore = new PlaybackHistoryStore();
         _ytDlpAudioCache = new YtDlpAudioCache();
