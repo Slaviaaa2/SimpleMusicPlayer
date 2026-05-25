@@ -12,12 +12,14 @@ internal sealed class YtDlpAudioCache
     private const string MetadataFileName = "entry.json";
 
     private readonly string? _ytDlpPath;
+    private readonly string? _ffmpegPath;
     private readonly JavaScriptRuntimeSelection? _javaScriptRuntime;
     private readonly string _cacheDirectory;
 
     public YtDlpAudioCache()
     {
         _ytDlpPath = ToolPathResolver.ResolveExecutablePath("yt-dlp");
+        _ffmpegPath = ToolPathResolver.ResolveExecutablePath("ffmpeg");
         _javaScriptRuntime = JavaScriptRuntimeResolver.ResolveForYtDlp();
         _cacheDirectory = Path.Combine(AppContext.BaseDirectory, "cache", "yt-dlp");
     }
@@ -53,6 +55,105 @@ internal sealed class YtDlpAudioCache
                 true);
         }
 
+        var metadataResult = await GetMetadataAsync(normalizedUrl, cancellationToken);
+        if (!metadataResult.Success && IsLikelyYouTubeUrl(normalizedUrl) && HasSupportedJavaScriptRuntime)
+        {
+            var updateResult = await TryUpdateYtDlpAsync(cancellationToken);
+            metadataResult = await GetMetadataAsync(normalizedUrl, cancellationToken);
+            if (!metadataResult.Success)
+            {
+                throw new InvalidOperationException(BuildFailureMessage(
+                    normalizedUrl,
+                    metadataResult.StandardError,
+                    metadataResult.StandardOutput,
+                    updateResult));
+            }
+        }
+        else if (!metadataResult.Success)
+        {
+            throw new InvalidOperationException(BuildFailureMessage(
+                normalizedUrl,
+                metadataResult.StandardError,
+                metadataResult.StandardOutput,
+                updateResult: null));
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadataResult.Metadata.Id))
+        {
+            CleanupDownloadedFiles(entryDirectory, metadataResult.Metadata.Id);
+        }
+
+        var firstAttempt = await RunDownloadAsync(normalizedUrl, entryDirectory, cancellationToken);
+        cachedFilePath = FindDownloadedFile(entryDirectory);
+        if (firstAttempt.ExitCode != 0 || cachedFilePath is null)
+        {
+            CleanupDownloadedFiles(entryDirectory);
+
+            if (IsLikelyYouTubeUrl(normalizedUrl) && HasSupportedJavaScriptRuntime)
+            {
+                var updateResult = await TryUpdateYtDlpAsync(cancellationToken);
+                var retryAttempt = await RunDownloadAsync(normalizedUrl, entryDirectory, cancellationToken);
+                cachedFilePath = FindDownloadedFile(entryDirectory);
+                if (retryAttempt.ExitCode == 0 && cachedFilePath is not null)
+                {
+                    var retryTitle = metadataResult.Metadata.Title ?? normalizedUrl;
+                    WriteMetadata(metadataPath, new CachedAudioEntry(normalizedUrl, retryTitle));
+
+                    return new CachedAudioResult(cachedFilePath, retryTitle, normalizedUrl, false);
+                }
+
+                CleanupDownloadedFiles(entryDirectory);
+                throw new InvalidOperationException(BuildFailureMessage(
+                    normalizedUrl,
+                    retryAttempt.StandardError,
+                    retryAttempt.StandardOutput,
+                    updateResult));
+            }
+
+            throw new InvalidOperationException(BuildFailureMessage(
+                normalizedUrl,
+                firstAttempt.StandardError,
+                firstAttempt.StandardOutput,
+                updateResult: null));
+        }
+
+        var title = metadataResult.Metadata.Title ?? normalizedUrl;
+        WriteMetadata(metadataPath, new CachedAudioEntry(normalizedUrl, title));
+
+        return new CachedAudioResult(cachedFilePath, title, normalizedUrl, false);
+    }
+
+    private async Task<YtDlpMetadataResult> GetMetadataAsync(string normalizedUrl, CancellationToken cancellationToken)
+    {
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = _ytDlpPath!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        };
+
+        processStartInfo.ArgumentList.Add("--no-playlist");
+        processStartInfo.ArgumentList.Add("--dump-single-json");
+        AddCommonNetworkArguments(processStartInfo, normalizedUrl);
+        processStartInfo.ArgumentList.Add(normalizedUrl);
+
+        var result = await RunYtDlpAsync(processStartInfo, cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            return new YtDlpMetadataResult(false, new YtDlpMetadata(null, null), result.StandardError, result.StandardOutput);
+        }
+
+        var metadata = ParseMetadata(result.StandardOutput);
+        return new YtDlpMetadataResult(true, metadata, result.StandardError, result.StandardOutput);
+    }
+
+    private async Task<YtDlpProcessResult> RunDownloadAsync(
+        string normalizedUrl,
+        string entryDirectory,
+        CancellationToken cancellationToken)
+    {
         var processStartInfo = new ProcessStartInfo
         {
             FileName = _ytDlpPath!,
@@ -65,22 +166,35 @@ internal sealed class YtDlpAudioCache
         processStartInfo.ArgumentList.Add("--no-playlist");
         processStartInfo.ArgumentList.Add("--no-progress");
         processStartInfo.ArgumentList.Add("--format");
-        processStartInfo.ArgumentList.Add("bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best");
+        processStartInfo.ArgumentList.Add("bestaudio/best");
         processStartInfo.ArgumentList.Add("--output");
         processStartInfo.ArgumentList.Add(Path.Combine(entryDirectory, $"{DownloadFilePrefix}.%(ext)s"));
-        if (_javaScriptRuntime is not null)
+
+        if (!string.IsNullOrWhiteSpace(_ffmpegPath))
         {
-            processStartInfo.ArgumentList.Add("--js-runtimes");
-            processStartInfo.ArgumentList.Add(_javaScriptRuntime.ToYtDlpArgument());
+            processStartInfo.ArgumentList.Add("--ffmpeg-location");
+            processStartInfo.ArgumentList.Add(_ffmpegPath);
+            processStartInfo.ArgumentList.Add("--extract-audio");
+            processStartInfo.ArgumentList.Add("--audio-format");
+            processStartInfo.ArgumentList.Add("mp3");
+            processStartInfo.ArgumentList.Add("--audio-quality");
+            processStartInfo.ArgumentList.Add("0");
+            processStartInfo.ArgumentList.Add("--embed-metadata");
         }
 
-        processStartInfo.ArgumentList.Add("--print");
-        processStartInfo.ArgumentList.Add("%(title)s");
+        AddCommonNetworkArguments(processStartInfo, normalizedUrl);
         processStartInfo.ArgumentList.Add(normalizedUrl);
 
+        return await RunYtDlpAsync(processStartInfo, cancellationToken, entryDirectory);
+    }
+
+    private static async Task<YtDlpProcessResult> RunYtDlpAsync(
+        ProcessStartInfo processStartInfo,
+        CancellationToken cancellationToken,
+        string? cleanupDirectory = null)
+    {
         using var process = Process.Start(processStartInfo)
             ?? throw new InvalidOperationException("Failed to start yt-dlp.");
-
         var stdErrTask = process.StandardError.ReadToEndAsync();
         var stdOutTask = process.StandardOutput.ReadToEndAsync();
 
@@ -91,24 +205,33 @@ internal sealed class YtDlpAudioCache
         catch (OperationCanceledException)
         {
             TryKill(process);
-            CleanupDownloadedFiles(entryDirectory);
+            if (cleanupDirectory is not null)
+            {
+                CleanupDownloadedFiles(cleanupDirectory);
+            }
+
             await DrainOutputAsync(stdErrTask, stdOutTask);
             throw;
         }
 
         await Task.WhenAll(stdErrTask, stdOutTask);
 
-        cachedFilePath = FindDownloadedFile(entryDirectory);
-        if (process.ExitCode != 0 || cachedFilePath is null)
+        return new YtDlpProcessResult(process.ExitCode, stdErrTask.Result, stdOutTask.Result);
+    }
+
+    private void AddCommonNetworkArguments(ProcessStartInfo processStartInfo, string normalizedUrl)
+    {
+        if (_javaScriptRuntime is not null)
         {
-            CleanupDownloadedFiles(entryDirectory);
-            throw new InvalidOperationException(BuildFailureMessage(normalizedUrl, stdErrTask.Result, stdOutTask.Result));
+            processStartInfo.ArgumentList.Add("--js-runtimes");
+            processStartInfo.ArgumentList.Add(_javaScriptRuntime.ToYtDlpArgument());
         }
 
-        var title = ParseTitle(stdOutTask.Result) ?? normalizedUrl;
-        WriteMetadata(metadataPath, new CachedAudioEntry(normalizedUrl, title));
-
-        return new CachedAudioResult(cachedFilePath, title, normalizedUrl, false);
+        if (IsLikelyYouTubeUrl(normalizedUrl))
+        {
+            processStartInfo.ArgumentList.Add("--extractor-args");
+            processStartInfo.ArgumentList.Add("youtube:player_client=default,web_safari");
+        }
     }
 
     private static string NormalizeUrl(string sourceUrl)
@@ -154,12 +277,85 @@ internal sealed class YtDlpAudioCache
         File.WriteAllText(metadataPath, json);
     }
 
-    private static string? ParseTitle(string standardOutput)
-        => standardOutput
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
+    private static YtDlpMetadata ParseMetadata(string standardOutput)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(standardOutput);
+            var root = document.RootElement;
+            var id = TryGetStringProperty(root, "id");
+            var title = TryGetStringProperty(root, "title");
+            return new YtDlpMetadata(id, title);
+        }
+        catch
+        {
+            return new YtDlpMetadata(null, null);
+        }
+    }
 
-    private string BuildFailureMessage(string sourceUrl, string standardError, string standardOutput)
+    private static string? TryGetStringProperty(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+
+    private async Task<YtDlpProcessResult?> TryUpdateYtDlpAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_ytDlpPath))
+        {
+            return null;
+        }
+
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = _ytDlpPath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        };
+
+        processStartInfo.ArgumentList.Add("-U");
+
+        try
+        {
+            using var process = Process.Start(processStartInfo);
+            if (process is null)
+            {
+                return null;
+            }
+
+            var stdErrTask = process.StandardError.ReadToEndAsync();
+            var stdOutTask = process.StandardOutput.ReadToEndAsync();
+
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                TryKill(process);
+                await DrainOutputAsync(stdErrTask, stdOutTask);
+                throw;
+            }
+
+            await Task.WhenAll(stdErrTask, stdOutTask);
+            return new YtDlpProcessResult(process.ExitCode, stdErrTask.Result, stdOutTask.Result);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new YtDlpProcessResult(-1, ex.Message, string.Empty);
+        }
+    }
+
+    private string BuildFailureMessage(
+        string sourceUrl,
+        string standardError,
+        string standardOutput,
+        YtDlpProcessResult? updateResult)
     {
         if (IsMissingJavaScriptRuntimeFailure(standardError, standardOutput) ||
             (IsLikelyYouTubeUrl(sourceUrl) && !HasSupportedJavaScriptRuntime))
@@ -170,7 +366,26 @@ internal sealed class YtDlpAudioCache
         }
 
         var genericDetails = BuildFailureDetails(standardError, standardOutput);
-        return $"yt-dlp could not fetch this URL.{genericDetails}";
+        var updateDetails = BuildUpdateDetails(updateResult);
+        return $"yt-dlp could not fetch this URL.{genericDetails}{updateDetails}";
+    }
+
+    private static string BuildUpdateDetails(YtDlpProcessResult? updateResult)
+    {
+        if (updateResult is null)
+        {
+            return string.Empty;
+        }
+
+        if (updateResult.ExitCode == 0)
+        {
+            return " yt-dlp was updated and the URL was retried.";
+        }
+
+        var details = BuildFailureDetails(updateResult.StandardError, updateResult.StandardOutput);
+        return string.IsNullOrWhiteSpace(details)
+            ? " yt-dlp update was attempted but failed."
+            : $" yt-dlp update was attempted but failed: {details}";
     }
 
     private static string BuildFailureDetails(string standardError, string standardOutput)
@@ -222,6 +437,9 @@ internal sealed class YtDlpAudioCache
     }
 
     private static void CleanupDownloadedFiles(string entryDirectory)
+        => CleanupDownloadedFiles(entryDirectory, id: null);
+
+    private static void CleanupDownloadedFiles(string entryDirectory, string? id)
     {
         try
         {
@@ -230,7 +448,11 @@ internal sealed class YtDlpAudioCache
                 return;
             }
 
-            foreach (var path in Directory.EnumerateFiles(entryDirectory, $"{DownloadFilePrefix}*", SearchOption.TopDirectoryOnly))
+            var searchPattern = string.IsNullOrWhiteSpace(id)
+                ? $"{DownloadFilePrefix}*"
+                : $"*{id}*.*";
+
+            foreach (var path in Directory.EnumerateFiles(entryDirectory, searchPattern, SearchOption.TopDirectoryOnly))
             {
                 File.Delete(path);
             }
@@ -255,6 +477,13 @@ internal sealed class YtDlpAudioCache
     }
 
     private sealed record CachedAudioEntry(string Url, string Title);
+    private sealed record YtDlpProcessResult(int ExitCode, string StandardError, string StandardOutput);
+    private sealed record YtDlpMetadata(string? Id, string? Title);
+    private sealed record YtDlpMetadataResult(
+        bool Success,
+        YtDlpMetadata Metadata,
+        string StandardError,
+        string StandardOutput);
 }
 
 internal sealed record CachedAudioResult(string FilePath, string Title, string SourceUrl, bool WasCached);

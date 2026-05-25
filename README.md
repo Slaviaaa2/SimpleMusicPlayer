@@ -177,10 +177,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Release.ps1 -RuntimeI
 
 ## GitHub Release
 
-- GitHub Actions は `v0.5.0` のようなタグ push で `win-x64` `osx-x64` `osx-arm64` `linux-x64` を publish し、それぞれ zip を Release に添付します。
+- GitHub Actions は `v0.5.1` のようなタグ push で `win-x64` `osx-x64` `osx-arm64` `linux-x64` を publish し、それぞれ zip を Release に添付します。
 - `workflow_dispatch` でも同じ artifact を取得できます。
 
 ```powershell
-git tag v0.5.0
+git tag v0.5.1
 git push origin main --tags
 ```
