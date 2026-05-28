@@ -61,17 +61,17 @@
             <TextBlock x:Name="TrackTitleText"
                        FontSize="26"
                        FontWeight="SemiBold"
-                       Text="Drop files or use Open."
+                       Text="{Binding TrackTitle}"
                        TextTrimming="CharacterEllipsis" />
 
             <DockPanel>
                 <TextBlock x:Name="StatusText"
                            DockPanel.Dock="Right"
                            Foreground="#A7A7A7"
-                           Text="Ready." />
+                           Text="{Binding Status}" />
                 <TextBlock x:Name="QueueInfoText"
                            Foreground="#A7A7A7"
-                           Text="Supports local files, album folders, and yt-dlp-backed URL playback."
+                           Text="{Binding QueueInfo}"
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
@@ -83,7 +83,7 @@
                         BorderThickness="1"
                         CornerRadius="10">
                     <TextBlock x:Name="SourceBadgeText"
-                               Text="Standby" />
+                               Text="{Binding SourceBadge}" />
                 </Border>
                 <Border Margin="0,0,8,8"
                         Padding="8,4"
@@ -92,7 +92,7 @@
                         BorderThickness="1"
                         CornerRadius="10">
                     <TextBlock x:Name="CurrentIndexText"
-                               Text="Track --" />
+                               Text="{Binding CurrentIndexText}" />
                 </Border>
                 <Border Margin="0,0,8,8"
                         Padding="8,4"
@@ -101,7 +101,7 @@
                         BorderThickness="1"
                         CornerRadius="10">
                     <TextBlock x:Name="QueueCountText"
-                               Text="Queue empty" />
+                               Text="{Binding QueueCountText}" />
                 </Border>
                 <Border Margin="0,0,8,8"
                         Padding="8,4"
@@ -110,7 +110,7 @@
                         BorderThickness="1"
                         CornerRadius="10">
                     <TextBlock x:Name="LoopModeBadgeText"
-                               Text="Loop All" />
+                               Text="{Binding LoopModeBadge}" />
                 </Border>
             </WrapPanel>
         </StackPanel>
@@ -122,6 +122,9 @@
             <TextBox x:Name="SourceInputTextBox"
                      Grid.Row="0"
                      Grid.Column="0"
+                     IsEnabled="{Binding IsSourceInputEnabled}"
+                     KeyDown="SourceInputTextBox_KeyDown"
+                     Text="{Binding SourceInput, Mode=TwoWay}"
                      VerticalContentAlignment="Center"
                      Watermark="Paste a URL, file path, or folder path" />
 
@@ -131,6 +134,8 @@
                     Width="92"
                     Margin="8,0,0,0"
                     Classes="primary"
+                    IsEnabled="{Binding IsAddSourceEnabled}"
+                    Command="{Binding AddSourceCommand}"
                     Content="Add" />
 
             <ProgressBar x:Name="PreparationBar"
@@ -138,25 +143,27 @@
                          Grid.ColumnSpan="2"
                          Margin="0,8,0,0"
                          IsIndeterminate="True"
-                         IsVisible="False" />
+                         IsVisible="{Binding IsPreparationVisible}" />
         </Grid>
 
         <Slider x:Name="SeekSlider"
                 Grid.Row="2"
                 Margin="0,16,0,0"
+                IsEnabled="{Binding IsSeekEnabled}"
                 Minimum="0"
-                Maximum="1" />
+                Maximum="{Binding SeekMaximum}"
+                Value="{Binding SeekValue, Mode=TwoWay}" />
 
         <DockPanel Grid.Row="3"
                    Margin="0,8,0,0">
             <TextBlock x:Name="ElapsedText"
                        DockPanel.Dock="Left"
                        Foreground="#CFCFCF"
-                       Text="00:00" />
+                       Text="{Binding ElapsedText}" />
             <TextBlock x:Name="RemainingText"
                        DockPanel.Dock="Right"
                        Foreground="#CFCFCF"
-                       Text="00:00" />
+                       Text="{Binding RemainingText}" />
         </DockPanel>
 
         <WrapPanel Grid.Row="4"
@@ -164,38 +171,52 @@
             <Button x:Name="OpenButton"
                     Width="72"
                     Margin="0,0,8,8"
+                    IsEnabled="{Binding IsOpenEnabled}"
+                    Command="{Binding OpenCommand}"
                     Content="Open" />
 
             <Button x:Name="AddAlbumButton"
                     Width="96"
                     Margin="0,0,8,8"
+                    IsEnabled="{Binding IsAddAlbumEnabled}"
+                    Command="{Binding AddAlbumCommand}"
                     Content="Add Album" />
 
             <Button x:Name="ReverseQueueButton"
                     Width="82"
                     Margin="0,0,8,8"
+                    IsEnabled="{Binding IsReverseQueueEnabled}"
+                    Command="{Binding ReverseQueueCommand}"
                     Content="Reverse" />
 
             <Button x:Name="PrevButton"
                     Width="46"
                     Margin="0,0,8,8"
+                    IsEnabled="{Binding IsPreviousEnabled}"
+                    Command="{Binding PreviousCommand}"
                     Content="|&lt;" />
 
             <Button x:Name="PlayPauseButton"
                     Width="76"
                     Margin="0,0,8,8"
                     Classes="primary"
-                    Content="Play" />
+                    IsEnabled="{Binding IsPlayPauseEnabled}"
+                    Command="{Binding PlayPauseCommand}"
+                    Content="{Binding PlayPauseContent}" />
 
             <Button x:Name="NextButton"
                     Width="46"
                     Margin="0,0,8,8"
+                    IsEnabled="{Binding IsNextEnabled}"
+                    Command="{Binding NextCommand}"
                     Content="&gt;|" />
 
             <Button x:Name="LoopButton"
                     Width="84"
                     Margin="0,0,8,8"
-                    Content="Loop: All" />
+                    IsEnabled="{Binding IsLoopEnabled}"
+                    Command="{Binding LoopCommand}"
+                    Content="{Binding LoopButtonContent}" />
         </WrapPanel>
 
         <TabControl Grid.Row="5"
@@ -205,11 +226,14 @@
                       RowDefinitions="Auto,*">
                     <TextBlock x:Name="QueueSummaryText"
                                Foreground="#A7A7A7"
-                               Text="0 queued" />
+                               Text="{Binding QueueSummary}" />
 
                     <ListBox x:Name="QueueList"
                              Grid.Row="1"
-                             Margin="0,10,0,0">
+                             Margin="0,10,0,0"
+                             DoubleTapped="QueueList_DoubleTapped"
+                             SelectedItem="{Binding SelectedQueueItem, Mode=TwoWay}"
+                             ItemsSource="{Binding Queue}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="10,8"
@@ -247,7 +271,10 @@
 
             <TabItem Header="Recent Albums">
                 <ListBox x:Name="AlbumHistoryList"
-                         Margin="0,10,0,0">
+                         Margin="0,10,0,0"
+                         DoubleTapped="AlbumHistoryList_DoubleTapped"
+                         SelectedItem="{Binding SelectedAlbumHistory, Mode=TwoWay}"
+                         ItemsSource="{Binding AlbumHistory}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="10,8"
@@ -272,8 +299,8 @@
                                         Margin="10,0,0,0"
                                         VerticalAlignment="Center"
                                         Classes="history-delete"
-                                        Click="RemoveAlbumHistoryButton_Click"
-                                        Tag="{Binding}"
+                                        Command="{Binding $parent[Window].DataContext.RemoveAlbumHistoryCommand}"
+                                        CommandParameter="{Binding}"
                                         ToolTip.Tip="Remove from Recent Albums">
                                     <Viewbox Width="15"
                                              Height="15">
@@ -296,7 +323,10 @@
 
             <TabItem Header="Recent Tracks">
                 <ListBox x:Name="TrackHistoryList"
-                         Margin="0,10,0,0">
+                         Margin="0,10,0,0"
+                         DoubleTapped="TrackHistoryList_DoubleTapped"
+                         SelectedItem="{Binding SelectedTrackHistory, Mode=TwoWay}"
+                         ItemsSource="{Binding TrackHistory}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="10,8"
@@ -317,8 +347,8 @@
                                         Margin="10,0,0,0"
                                         VerticalAlignment="Center"
                                         Classes="history-delete"
-                                        Click="RemoveTrackHistoryButton_Click"
-                                        Tag="{Binding}"
+                                        Command="{Binding $parent[Window].DataContext.RemoveTrackHistoryCommand}"
+                                        CommandParameter="{Binding}"
                                         ToolTip.Tip="Remove from Recent Tracks">
                                     <Viewbox Width="15"
                                              Height="15">

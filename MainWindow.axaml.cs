@@ -16,37 +16,15 @@ public partial class MainWindow : Window
     private const int MaxHistoryItems = 20;
 
     private readonly DispatcherTimer _positionTimer;
+    private readonly MainWindowViewModel _viewModel = new();
     private readonly AppSetupCoordinator _appSetupCoordinator;
     private readonly DiscordPresenceService _discordPresence;
     private readonly PlaybackHistoryStore _historyStore;
-    private readonly ObservableCollection<AlbumHistoryEntry> _albumHistory = [];
-    private readonly ObservableCollection<PlaybackItem> _queue = [];
-    private readonly ObservableCollection<TrackHistoryEntry> _trackHistory = [];
+    private readonly ObservableCollection<AlbumHistoryEntry> _albumHistory;
+    private readonly ObservableCollection<PlaybackItem> _queue;
+    private readonly ObservableCollection<TrackHistoryEntry> _trackHistory;
     private readonly Random _random = new();
-    private readonly TextBlock _trackTitleText;
-    private readonly TextBlock _statusText;
-    private readonly TextBlock _queueInfoText;
-    private readonly TextBlock _sourceBadgeText;
-    private readonly TextBlock _currentIndexText;
-    private readonly TextBlock _queueCountText;
-    private readonly TextBlock _loopModeBadgeText;
-    private readonly TextBox _sourceInputTextBox;
-    private readonly Button _addSourceButton;
-    private readonly ProgressBar _preparationBar;
     private readonly Slider _seekSlider;
-    private readonly TextBlock _elapsedText;
-    private readonly TextBlock _remainingText;
-    private readonly Button _openButton;
-    private readonly Button _addAlbumButton;
-    private readonly Button _reverseQueueButton;
-    private readonly Button _prevButton;
-    private readonly Button _playPauseButton;
-    private readonly Button _nextButton;
-    private readonly Button _loopButton;
-    private readonly TextBlock _queueSummaryText;
-    private readonly ListBox _queueList;
-    private readonly ListBox _albumHistoryList;
-    private readonly ListBox _trackHistoryList;
     private FfmpegAudioCache _ffmpegAudioCache;
     private YtDlpAudioCache _ytDlpAudioCache;
     private PlaybackController? _playbackController;
@@ -63,57 +41,23 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DataContext = _viewModel;
 
-        _trackTitleText = this.FindControl<TextBlock>("TrackTitleText")!;
-        _statusText = this.FindControl<TextBlock>("StatusText")!;
-        _queueInfoText = this.FindControl<TextBlock>("QueueInfoText")!;
-        _sourceBadgeText = this.FindControl<TextBlock>("SourceBadgeText")!;
-        _currentIndexText = this.FindControl<TextBlock>("CurrentIndexText")!;
-        _queueCountText = this.FindControl<TextBlock>("QueueCountText")!;
-        _loopModeBadgeText = this.FindControl<TextBlock>("LoopModeBadgeText")!;
-        _sourceInputTextBox = this.FindControl<TextBox>("SourceInputTextBox")!;
-        _addSourceButton = this.FindControl<Button>("AddSourceButton")!;
-        _preparationBar = this.FindControl<ProgressBar>("PreparationBar")!;
+        _albumHistory = _viewModel.AlbumHistory;
+        _queue = _viewModel.Queue;
+        _trackHistory = _viewModel.TrackHistory;
+        ConfigureCommands();
+
         _seekSlider = this.FindControl<Slider>("SeekSlider")!;
-        _elapsedText = this.FindControl<TextBlock>("ElapsedText")!;
-        _remainingText = this.FindControl<TextBlock>("RemainingText")!;
-        _openButton = this.FindControl<Button>("OpenButton")!;
-        _addAlbumButton = this.FindControl<Button>("AddAlbumButton")!;
-        _reverseQueueButton = this.FindControl<Button>("ReverseQueueButton")!;
-        _prevButton = this.FindControl<Button>("PrevButton")!;
-        _playPauseButton = this.FindControl<Button>("PlayPauseButton")!;
-        _nextButton = this.FindControl<Button>("NextButton")!;
-        _loopButton = this.FindControl<Button>("LoopButton")!;
-        _queueSummaryText = this.FindControl<TextBlock>("QueueSummaryText")!;
-        _queueList = this.FindControl<ListBox>("QueueList")!;
-        _albumHistoryList = this.FindControl<ListBox>("AlbumHistoryList")!;
-        _trackHistoryList = this.FindControl<ListBox>("TrackHistoryList")!;
-
-        _albumHistoryList.ItemsSource = _albumHistory;
-        _queueList.ItemsSource = _queue;
-        _trackHistoryList.ItemsSource = _trackHistory;
-
         _positionTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _positionTimer.Tick += (_, _) => UpdateSeekUi();
 
-        _openButton.Click += OpenButton_Click;
-        _addAlbumButton.Click += AddAlbumButton_Click;
-        _reverseQueueButton.Click += ReverseQueueButton_Click;
-        _addSourceButton.Click += AddSourceButton_Click;
-        _prevButton.Click += PrevButton_Click;
-        _playPauseButton.Click += PlayPauseButton_Click;
-        _nextButton.Click += NextButton_Click;
-        _loopButton.Click += LoopButton_Click;
-        _sourceInputTextBox.KeyDown += SourceInputTextBox_KeyDown;
         _seekSlider.PropertyChanged += SeekSlider_PropertyChanged;
         _seekSlider.AddHandler(InputElement.PointerPressedEvent, SeekSlider_PointerPressed, RoutingStrategies.Tunnel);
         _seekSlider.AddHandler(InputElement.PointerReleasedEvent, SeekSlider_PointerReleased, RoutingStrategies.Tunnel);
-        _queueList.DoubleTapped += QueueList_DoubleTapped;
-        _albumHistoryList.DoubleTapped += AlbumHistoryList_DoubleTapped;
-        _trackHistoryList.DoubleTapped += TrackHistoryList_DoubleTapped;
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, Window_DragOver);
         AddHandler(DragDrop.DropEvent, Window_Drop);
@@ -143,6 +87,20 @@ public partial class MainWindow : Window
 
         UpdateUiState();
         Dispatcher.UIThread.Post(async () => await OfferAppSetupIfNeededAsync(), DispatcherPriority.Background);
+    }
+
+    private void ConfigureCommands()
+    {
+        _viewModel.OpenCommand = new AsyncRelayCommand(_ => OpenFilesAsync());
+        _viewModel.AddAlbumCommand = new AsyncRelayCommand(_ => AddAlbumAsync());
+        _viewModel.ReverseQueueCommand = new RelayCommand(_ => ReverseQueueOrder());
+        _viewModel.PreviousCommand = new AsyncRelayCommand(_ => GoToPreviousTrackAsync());
+        _viewModel.PlayPauseCommand = new AsyncRelayCommand(_ => TogglePlaybackAsync());
+        _viewModel.NextCommand = new AsyncRelayCommand(_ => GoToNextTrackAsync());
+        _viewModel.LoopCommand = new RelayCommand(_ => CycleLoopMode());
+        _viewModel.AddSourceCommand = new AsyncRelayCommand(_ => AddSourceFromInputAsync());
+        _viewModel.RemoveAlbumHistoryCommand = new RelayCommand(RemoveAlbumHistory);
+        _viewModel.RemoveTrackHistoryCommand = new RelayCommand(RemoveTrackHistory);
     }
 
     protected override async void OnKeyDown(KeyEventArgs e)
@@ -184,7 +142,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async Task OpenFilesAsync()
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -206,7 +164,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void AddAlbumButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async Task AddAlbumAsync()
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
@@ -221,17 +179,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void AddSourceButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await AddSourceFromInputAsync();
-
-    private void ReverseQueueButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => ReverseQueueOrder();
-
-    private async void PrevButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await GoToPreviousTrackAsync();
-
-    private async void PlayPauseButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await TogglePlaybackAsync();
-
-    private async void NextButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await GoToNextTrackAsync();
-
-    private void LoopButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void CycleLoopMode()
     {
         _loopMode = _loopMode.Next();
 
@@ -254,8 +202,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var target = TimeSpan.FromSeconds(_seekSlider.Value);
-        _elapsedText.Text = FormatTime(target);
+        var target = TimeSpan.FromSeconds(_viewModel.SeekValue);
+        _viewModel.ElapsedText = FormatTime(target);
     }
 
     private async void SourceInputTextBox_KeyDown(object? sender, KeyEventArgs e)
@@ -277,7 +225,7 @@ public partial class MainWindow : Window
 
     private async void AlbumHistoryList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (_albumHistoryList.SelectedItem is AlbumHistoryEntry entry)
+        if (_viewModel.SelectedAlbumHistory is AlbumHistoryEntry entry)
         {
             await ReplayAlbumHistoryAsync(entry);
         }
@@ -285,16 +233,15 @@ public partial class MainWindow : Window
 
     private async void TrackHistoryList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (_trackHistoryList.SelectedItem is TrackHistoryEntry entry)
+        if (_viewModel.SelectedTrackHistory is TrackHistoryEntry entry)
         {
             await ReplayTrackHistoryAsync(entry);
         }
     }
 
-    private void RemoveAlbumHistoryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void RemoveAlbumHistory(object? parameter)
     {
-        e.Handled = true;
-        if (sender is Button { Tag: AlbumHistoryEntry entry } && _albumHistory.Remove(entry))
+        if (parameter is AlbumHistoryEntry entry && _albumHistory.Remove(entry))
         {
             SaveHistory();
             SetStatus("Removed album from history.");
@@ -302,10 +249,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RemoveTrackHistoryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void RemoveTrackHistory(object? parameter)
     {
-        e.Handled = true;
-        if (sender is Button { Tag: TrackHistoryEntry entry } && _trackHistory.Remove(entry))
+        if (parameter is TrackHistoryEntry entry && _trackHistory.Remove(entry))
         {
             SaveHistory();
             SetStatus("Removed track from history.");
@@ -315,7 +261,7 @@ public partial class MainWindow : Window
 
     private async void QueueList_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (_queueList.SelectedItem is not PlaybackItem item)
+        if (_viewModel.SelectedQueueItem is not PlaybackItem item)
         {
             return;
         }
@@ -434,9 +380,9 @@ public partial class MainWindow : Window
         ResetTransportUi();
         StopPlayback(clearSource: true);
 
-        _trackTitleText.Text = item.DisplayName;
-        _queueInfoText.Text = BuildQueueText(item);
-        _queueList.SelectedIndex = index;
+        _viewModel.TrackTitle = item.DisplayName;
+        _viewModel.QueueInfo = BuildQueueText(item);
+        _viewModel.SelectedQueueItem = item;
         SetStatus(BuildPreparationStatus(item));
         UpdateUiState();
 
@@ -580,7 +526,7 @@ public partial class MainWindow : Window
         }
 
         _currentIndex = currentItem is null ? -1 : _queue.IndexOf(currentItem);
-        _queueList.SelectedIndex = _currentIndex;
+        _viewModel.SelectedQueueItem = currentItem;
         SetStatus("Queue order reversed.");
         UpdateUiState();
     }
@@ -606,7 +552,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _playbackController.Position = TimeSpan.FromSeconds(_seekSlider.Value);
+        _playbackController.Position = TimeSpan.FromSeconds(_viewModel.SeekValue);
         UpdateSeekUi();
     }
 
@@ -614,8 +560,10 @@ public partial class MainWindow : Window
     {
         if (!_isMediaLoaded || _playbackController is null || _playbackController.Duration <= TimeSpan.Zero)
         {
-            _elapsedText.Text = "00:00";
-            _remainingText.Text = "00:00";
+            _viewModel.ElapsedText = "00:00";
+            _viewModel.RemainingText = "00:00";
+            _viewModel.SeekValue = 0;
+            _viewModel.SeekMaximum = 1;
             return;
         }
 
@@ -624,43 +572,43 @@ public partial class MainWindow : Window
 
         if (!_isDraggingSeekBar)
         {
-            _seekSlider.Maximum = Math.Max(duration.TotalSeconds, 1);
-            _seekSlider.Value = Math.Clamp(position.TotalSeconds, 0, _seekSlider.Maximum);
+            _viewModel.SeekMaximum = Math.Max(duration.TotalSeconds, 1);
+            _viewModel.SeekValue = Math.Clamp(position.TotalSeconds, 0, _viewModel.SeekMaximum);
         }
 
-        _elapsedText.Text = FormatTime(position);
-        _remainingText.Text = $"-{FormatTime(duration - position)}";
+        _viewModel.ElapsedText = FormatTime(position);
+        _viewModel.RemainingText = $"-{FormatTime(duration - position)}";
     }
 
     private void UpdateUiState()
     {
-        _playPauseButton.Content = _isPreparingTrack ? "Loading" : _isPlaying ? "Pause" : "Play";
-        _playPauseButton.IsEnabled = _queue.Count > 0 && !_isPreparingTrack && !_isRunningAppSetup;
-        _prevButton.IsEnabled = _queue.Count > 0 && !_isRunningAppSetup;
-        _nextButton.IsEnabled = _queue.Count > 0 && !_isRunningAppSetup;
-        _openButton.IsEnabled = !_isRunningAppSetup;
-        _addAlbumButton.IsEnabled = !_isRunningAppSetup;
-        _reverseQueueButton.IsEnabled = _queue.Count > 1 && !_isPreparingTrack && !_isRunningAppSetup;
-        _addSourceButton.IsEnabled = !_isRunningAppSetup;
-        _loopButton.IsEnabled = !_isRunningAppSetup;
-        _sourceInputTextBox.IsEnabled = !_isRunningAppSetup;
-        _seekSlider.IsEnabled = _isMediaLoaded && !_isPreparingTrack && !_isRunningAppSetup;
-        _preparationBar.IsVisible = _isPreparingTrack || _isRunningAppSetup;
+        _viewModel.PlayPauseContent = _isPreparingTrack ? "Loading" : _isPlaying ? "Pause" : "Play";
+        _viewModel.IsPlayPauseEnabled = _queue.Count > 0 && !_isPreparingTrack && !_isRunningAppSetup;
+        _viewModel.IsPreviousEnabled = _queue.Count > 0 && !_isRunningAppSetup;
+        _viewModel.IsNextEnabled = _queue.Count > 0 && !_isRunningAppSetup;
+        _viewModel.IsOpenEnabled = !_isRunningAppSetup;
+        _viewModel.IsAddAlbumEnabled = !_isRunningAppSetup;
+        _viewModel.IsReverseQueueEnabled = _queue.Count > 1 && !_isPreparingTrack && !_isRunningAppSetup;
+        _viewModel.IsAddSourceEnabled = !_isRunningAppSetup;
+        _viewModel.IsLoopEnabled = !_isRunningAppSetup;
+        _viewModel.IsSourceInputEnabled = !_isRunningAppSetup;
+        _viewModel.IsSeekEnabled = _isMediaLoaded && !_isPreparingTrack && !_isRunningAppSetup;
+        _viewModel.IsPreparationVisible = _isPreparingTrack || _isRunningAppSetup;
 
-        _queueSummaryText.Text = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
-        _queueCountText.Text = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
-        _currentIndexText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
+        _viewModel.QueueSummary = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
+        _viewModel.QueueCountText = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
+        _viewModel.CurrentIndexText = _currentIndex >= 0 && _currentIndex < _queue.Count
             ? $"Track {_currentIndex + 1}/{_queue.Count}"
             : "Track --";
-        _sourceBadgeText.Text = _currentIndex >= 0 && _currentIndex < _queue.Count
+        _viewModel.SourceBadge = _currentIndex >= 0 && _currentIndex < _queue.Count
             ? _queue[_currentIndex].SourceLabel
             : "Standby";
 
         if (_queue.Count == 0)
         {
-            _queueList.SelectedIndex = -1;
-            _trackTitleText.Text = "Drop files or use Open.";
-            _queueInfoText.Text = "Load a folder, pick files, or paste a URL to start playback.";
+            _viewModel.SelectedQueueItem = null;
+            _viewModel.TrackTitle = "Drop files or use Open.";
+            _viewModel.QueueInfo = "Load a folder, pick files, or paste a URL to start playback.";
             if (!_isRunningAppSetup)
             {
                 SetStatus("Ready for local files, albums, and URL playback.");
@@ -670,8 +618,8 @@ public partial class MainWindow : Window
 
         if (_currentIndex >= 0 && _currentIndex < _queue.Count)
         {
-            _queueList.SelectedIndex = _currentIndex;
-            _queueInfoText.Text = BuildQueueText(_queue[_currentIndex]);
+            _viewModel.SelectedQueueItem = _queue[_currentIndex];
+            _viewModel.QueueInfo = BuildQueueText(_queue[_currentIndex]);
         }
 
         if (_isPreparingTrack || _isRunningAppSetup)
@@ -697,8 +645,8 @@ public partial class MainWindow : Window
     {
         var loopText = _loopMode.DisplayText();
 
-        _loopButton.Content = loopText.Replace("Loop ", "Loop: ");
-        _loopModeBadgeText.Text = loopText;
+        _viewModel.LoopButtonContent = loopText.Replace("Loop ", "Loop: ");
+        _viewModel.LoopModeBadge = loopText;
     }
 
     private string BuildQueueText(PlaybackItem item)
@@ -776,7 +724,7 @@ public partial class MainWindow : Window
 
     private async Task AddSourceFromInputAsync()
     {
-        var source = NormalizeSourceInput(_sourceInputTextBox.Text);
+        var source = NormalizeSourceInput(_viewModel.SourceInput);
         if (!TryResolveInputSource(source, out var resolvedSource, out var validationMessage))
         {
             await DialogService.ShowInfoAsync(this, "Invalid source", validationMessage);
@@ -797,7 +745,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _sourceInputTextBox.Text = string.Empty;
+        _viewModel.SourceInput = string.Empty;
 
         if (added.Count > 0 && _currentIndex < 0)
         {
@@ -916,8 +864,8 @@ public partial class MainWindow : Window
             }
 
             item.UpdateDisplayName(cachedAudio.Title);
-            _trackTitleText.Text = item.DisplayName;
-            _queueInfoText.Text = cachedAudio.WasCached
+            _viewModel.TrackTitle = item.DisplayName;
+            _viewModel.QueueInfo = cachedAudio.WasCached
                 ? $"URL {_currentIndex + 1}/{_queue.Count}  cache ready  {cachedAudio.SourceUrl}"
                 : $"URL {_currentIndex + 1}/{_queue.Count}  downloaded  {cachedAudio.SourceUrl}";
 
@@ -1178,15 +1126,15 @@ public partial class MainWindow : Window
 
     private void ResetTransportUi()
     {
-        _seekSlider.Value = 0;
-        _seekSlider.Maximum = 1;
-        _elapsedText.Text = "00:00";
-        _remainingText.Text = "00:00";
+        _viewModel.SeekValue = 0;
+        _viewModel.SeekMaximum = 1;
+        _viewModel.ElapsedText = "00:00";
+        _viewModel.RemainingText = "00:00";
     }
 
     private void SetStatus(string message)
     {
-        _statusText.Text = message;
+        _viewModel.Status = message;
     }
 
     private string BuildPreparationStatus(PlaybackItem item)
