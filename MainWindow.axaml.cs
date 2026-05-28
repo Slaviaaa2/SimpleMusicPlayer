@@ -13,13 +13,12 @@ namespace SimpleMusicPlayer;
 
 public partial class MainWindow : Window
 {
-    private const int MaxHistoryItems = 20;
-
     private readonly DispatcherTimer _positionTimer;
     private readonly MainWindowViewModel _viewModel = new();
     private readonly AppSetupCoordinator _appSetupCoordinator;
     private readonly DiscordPresenceService _discordPresence;
-    private readonly PlaybackHistoryStore _historyStore;
+    private readonly PlaybackHistoryService _historyService;
+    private readonly PlaybackSourceCollector _sourceCollector = new();
     private readonly ObservableCollection<AlbumHistoryEntry> _albumHistory;
     private readonly ObservableCollection<PlaybackItem> _queue;
     private readonly ObservableCollection<TrackHistoryEntry> _trackHistory;
@@ -67,7 +66,7 @@ public partial class MainWindow : Window
         var options = CliOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
         _discordPresence = new DiscordPresenceService();
         _ffmpegAudioCache = new FfmpegAudioCache();
-        _historyStore = new PlaybackHistoryStore();
+        _historyService = new PlaybackHistoryService();
         _ytDlpAudioCache = new YtDlpAudioCache();
         _loopMode = options.LoopMode;
 
@@ -241,9 +240,9 @@ public partial class MainWindow : Window
 
     private void RemoveAlbumHistory(object? parameter)
     {
-        if (parameter is AlbumHistoryEntry entry && _albumHistory.Remove(entry))
+        if (parameter is AlbumHistoryEntry entry &&
+            _historyService.RemoveAlbum(_albumHistory, _trackHistory, entry))
         {
-            SaveHistory();
             SetStatus("Removed album from history.");
             UpdateUiState();
         }
@@ -251,9 +250,9 @@ public partial class MainWindow : Window
 
     private void RemoveTrackHistory(object? parameter)
     {
-        if (parameter is TrackHistoryEntry entry && _trackHistory.Remove(entry))
+        if (parameter is TrackHistoryEntry entry &&
+            _historyService.RemoveTrack(_albumHistory, _trackHistory, entry))
         {
-            SaveHistory();
             SetStatus("Removed track from history.");
             UpdateUiState();
         }
@@ -304,48 +303,18 @@ public partial class MainWindow : Window
             _queue.Clear();
         }
 
-        var addedItems = new List<PlaybackItem>();
+        var collected = _sourceCollector.Collect(
+            rawSources,
+            _ytDlpAudioCache.IsSupportedUrl,
+            shuffle,
+            _random);
 
-        foreach (var source in rawSources.Where(static path => !string.IsNullOrWhiteSpace(path)))
+        foreach (var album in collected.Albums)
         {
-            if (Directory.Exists(source))
-            {
-                var albumFiles = Directory.EnumerateFiles(source)
-                    .Where(IsSupportedMediaFile)
-                    .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                foreach (var file in albumFiles)
-                {
-                    addedItems.Add(PlaybackItem.FromAlbumTrack(file));
-                }
-
-                if (albumFiles.Count > 0)
-                {
-                    RecordAlbumHistory(source, albumFiles.Count);
-                }
-
-                continue;
-            }
-
-            if (_ytDlpAudioCache.IsSupportedUrl(source))
-            {
-                addedItems.Add(PlaybackItem.FromUrl(source));
-                continue;
-            }
-
-            if (File.Exists(source) && IsSupportedMediaFile(source))
-            {
-                addedItems.Add(PlaybackItem.FromFile(source));
-            }
+            RecordAlbumHistory(album.Path, album.TrackCount);
         }
 
-        if (shuffle && addedItems.Count > 1)
-        {
-            ShuffleItems(addedItems);
-        }
-
-        foreach (var item in addedItems)
+        foreach (var item in collected.Items)
         {
             _queue.Add(item);
         }
@@ -357,7 +326,7 @@ public partial class MainWindow : Window
                 : 0;
 
         UpdateUiState();
-        return addedItems;
+        return [.. collected.Items];
     }
 
     private async Task StartTrackAsync(int index)
@@ -381,7 +350,7 @@ public partial class MainWindow : Window
         StopPlayback(clearSource: true);
 
         _viewModel.TrackTitle = item.DisplayName;
-        _viewModel.QueueInfo = BuildQueueText(item);
+        _viewModel.QueueInfo = MainWindowViewModel.BuildQueueText(item, _currentIndex, _queue.Count);
         _viewModel.SelectedQueueItem = item;
         SetStatus(BuildPreparationStatus(item));
         UpdateUiState();
@@ -582,63 +551,13 @@ public partial class MainWindow : Window
 
     private void UpdateUiState()
     {
-        _viewModel.PlayPauseContent = _isPreparingTrack ? "Loading" : _isPlaying ? "Pause" : "Play";
-        _viewModel.IsPlayPauseEnabled = _queue.Count > 0 && !_isPreparingTrack && !_isRunningAppSetup;
-        _viewModel.IsPreviousEnabled = _queue.Count > 0 && !_isRunningAppSetup;
-        _viewModel.IsNextEnabled = _queue.Count > 0 && !_isRunningAppSetup;
-        _viewModel.IsOpenEnabled = !_isRunningAppSetup;
-        _viewModel.IsAddAlbumEnabled = !_isRunningAppSetup;
-        _viewModel.IsReverseQueueEnabled = _queue.Count > 1 && !_isPreparingTrack && !_isRunningAppSetup;
-        _viewModel.IsAddSourceEnabled = !_isRunningAppSetup;
-        _viewModel.IsLoopEnabled = !_isRunningAppSetup;
-        _viewModel.IsSourceInputEnabled = !_isRunningAppSetup;
-        _viewModel.IsSeekEnabled = _isMediaLoaded && !_isPreparingTrack && !_isRunningAppSetup;
-        _viewModel.IsPreparationVisible = _isPreparingTrack || _isRunningAppSetup;
-
-        _viewModel.QueueSummary = _queue.Count == 0 ? "0 queued" : $"{_queue.Count} queued";
-        _viewModel.QueueCountText = _queue.Count == 0 ? "Queue empty" : $"{_queue.Count} queued";
-        _viewModel.CurrentIndexText = _currentIndex >= 0 && _currentIndex < _queue.Count
-            ? $"Track {_currentIndex + 1}/{_queue.Count}"
-            : "Track --";
-        _viewModel.SourceBadge = _currentIndex >= 0 && _currentIndex < _queue.Count
-            ? _queue[_currentIndex].SourceLabel
-            : "Standby";
-
-        if (_queue.Count == 0)
-        {
-            _viewModel.SelectedQueueItem = null;
-            _viewModel.TrackTitle = "Drop files or use Open.";
-            _viewModel.QueueInfo = "Load a folder, pick files, or paste a URL to start playback.";
-            if (!_isRunningAppSetup)
-            {
-                SetStatus("Ready for local files, albums, and URL playback.");
-            }
-            return;
-        }
-
-        if (_currentIndex >= 0 && _currentIndex < _queue.Count)
-        {
-            _viewModel.SelectedQueueItem = _queue[_currentIndex];
-            _viewModel.QueueInfo = BuildQueueText(_queue[_currentIndex]);
-        }
-
-        if (_isPreparingTrack || _isRunningAppSetup)
-        {
-            return;
-        }
-
-        if (_isPlaying)
-        {
-            SetStatus("Playing.");
-        }
-        else if (_isMediaLoaded)
-        {
-            SetStatus("Paused.");
-        }
-        else
-        {
-            SetStatus("Queue ready.");
-        }
+        _viewModel.ApplyPlaybackState(
+            _queue,
+            _currentIndex,
+            _isPreparingTrack,
+            _isPlaying,
+            _isMediaLoaded,
+            _isRunningAppSetup);
     }
 
     private void UpdateLoopButton()
@@ -648,9 +567,6 @@ public partial class MainWindow : Window
         _viewModel.LoopButtonContent = loopText.Replace("Loop ", "Loop: ");
         _viewModel.LoopModeBadge = loopText;
     }
-
-    private string BuildQueueText(PlaybackItem item)
-        => $"{item.SourceLabel} {_currentIndex + 1}/{_queue.Count}  {item.ContextText}";
 
     private static IReadOnlyCollection<string> ResolveInitialSources(CliOptions options)
     {
@@ -902,53 +818,12 @@ public partial class MainWindow : Window
 
     private void LoadHistory()
     {
-        var history = _historyStore.Load();
-
-        ReplaceHistoryItems(_albumHistory, history.Albums
-            .OrderByDescending(static entry => entry.LastPlayedAt)
-            .Take(MaxHistoryItems));
-        ReplaceHistoryItems(_trackHistory, history.Tracks
-            .OrderByDescending(static entry => entry.LastPlayedAt)
-            .Take(MaxHistoryItems));
-    }
-
-    private void SaveHistory()
-    {
-        _historyStore.Save(new PlaybackHistorySnapshot
-        {
-            Albums = [.. _albumHistory],
-            Tracks = [.. _trackHistory]
-        });
+        _historyService.Load(_albumHistory, _trackHistory);
     }
 
     private void RecordAlbumHistory(string albumPath, int trackCount, string? displayNameOverride = null)
     {
-        if (string.IsNullOrWhiteSpace(albumPath) || trackCount <= 0)
-        {
-            return;
-        }
-
-        var displayName = displayNameOverride;
-        if (string.IsNullOrWhiteSpace(displayName))
-        {
-            displayName = Path.GetFileName(albumPath);
-        }
-
-        if (string.IsNullOrWhiteSpace(displayName))
-        {
-            displayName = albumPath;
-        }
-
-        var entry = new AlbumHistoryEntry(
-            albumPath,
-            displayName,
-            trackCount,
-            DateTimeOffset.Now);
-        UpsertHistoryItem(
-            _albumHistory,
-            entry,
-            static (left, right) => string.Equals(left.AlbumPath, right.AlbumPath, StringComparison.OrdinalIgnoreCase));
-        SaveHistory();
+        _historyService.RecordAlbum(_albumHistory, _trackHistory, albumPath, trackCount, displayNameOverride);
     }
 
     private void RecordTrackHistory()
@@ -958,21 +833,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var item = _queue[_currentIndex];
-        var entry = new TrackHistoryEntry(
-            item.Path,
-            item.DisplayName,
-            BuildTrackHistoryContext(item),
-            DateTimeOffset.Now);
-        UpsertHistoryItem(
-            _trackHistory,
-            entry,
-            static (left, right) => string.Equals(left.SourcePath, right.SourcePath, StringComparison.OrdinalIgnoreCase));
-        SaveHistory();
+        _historyService.RecordTrack(_albumHistory, _trackHistory, _queue[_currentIndex]);
     }
-
-    private string BuildTrackHistoryContext(PlaybackItem item)
-        => item.IsUrlSource && !item.IsAlbumSource ? item.Path : item.ContextText;
 
     private async Task ReplayAlbumHistoryAsync(AlbumHistoryEntry entry)
     {
@@ -1034,34 +896,6 @@ public partial class MainWindow : Window
         if (replayed.Count > 0)
         {
             await StartTrackAsync(0);
-        }
-    }
-
-    private static void ReplaceHistoryItems<T>(ObservableCollection<T> collection, IEnumerable<T> items)
-    {
-        collection.Clear();
-        foreach (var item in items)
-        {
-            collection.Add(item);
-        }
-    }
-
-    private static void UpsertHistoryItem<T>(ObservableCollection<T> collection, T item, Func<T, T, bool> isMatch)
-    {
-        var existingIndex = collection
-            .Select((entry, index) => new { entry, index })
-            .FirstOrDefault(candidate => isMatch(candidate.entry, item))
-            ?.index ?? -1;
-
-        if (existingIndex >= 0)
-        {
-            collection.RemoveAt(existingIndex);
-        }
-
-        collection.Insert(0, item);
-        while (collection.Count > MaxHistoryItems)
-        {
-            collection.RemoveAt(collection.Count - 1);
         }
     }
 
@@ -1151,15 +985,6 @@ public partial class MainWindow : Window
             PlaybackSourceKind.PlaylistTrack => "Cueing playlist track...",
             _ => "Cueing track..."
         };
-
-    private void ShuffleItems(IList<PlaybackItem> items)
-    {
-        for (var i = items.Count - 1; i > 0; i--)
-        {
-            var swapIndex = _random.Next(i + 1);
-            (items[i], items[swapIndex]) = (items[swapIndex], items[i]);
-        }
-    }
 
     private void ReloadExternalToolCaches()
     {
