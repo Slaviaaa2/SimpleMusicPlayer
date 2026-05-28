@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,6 +8,8 @@ namespace SimpleMusicPlayer;
 internal sealed class FfmpegAudioCache : IDisposable
 {
     private readonly Dictionary<string, string> _transcodedPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _transcodeLocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ExternalProcessRunner _processRunner = new();
     private readonly string? _ffmpegPath;
     private readonly string _cacheDirectory;
     private bool _disposed;
@@ -22,10 +24,7 @@ internal sealed class FfmpegAudioCache : IDisposable
 
     public bool RequiresTranscode(string path)
     {
-        var extension = Path.GetExtension(path);
-        return extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".opus", StringComparison.OrdinalIgnoreCase);
+        return MediaFileTypes.RequiresTranscode(path);
     }
 
     public async Task<string> GetPlaybackPathAsync(string sourcePath, CancellationToken cancellationToken)
@@ -42,65 +41,60 @@ internal sealed class FfmpegAudioCache : IDisposable
             return existingPath;
         }
 
-        Directory.CreateDirectory(_cacheDirectory);
-
-        var outputPath = Path.Combine(_cacheDirectory, $"{BuildSourceCacheKey(sourcePath)}.wav");
-        if (File.Exists(outputPath))
-        {
-            _transcodedPaths[sourcePath] = outputPath;
-            return outputPath;
-        }
-
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = _ffmpegPath!,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
-        };
-
-        processStartInfo.ArgumentList.Add("-y");
-        processStartInfo.ArgumentList.Add("-i");
-        processStartInfo.ArgumentList.Add(sourcePath);
-        processStartInfo.ArgumentList.Add("-vn");
-        processStartInfo.ArgumentList.Add("-acodec");
-        processStartInfo.ArgumentList.Add("pcm_s16le");
-        processStartInfo.ArgumentList.Add("-ar");
-        processStartInfo.ArgumentList.Add("48000");
-        processStartInfo.ArgumentList.Add("-ac");
-        processStartInfo.ArgumentList.Add("2");
-        processStartInfo.ArgumentList.Add(outputPath);
-
-        using var process = Process.Start(processStartInfo)
-            ?? throw new InvalidOperationException("Failed to start ffmpeg.");
-
-        var stdErrTask = process.StandardError.ReadToEndAsync();
-        var stdOutTask = process.StandardOutput.ReadToEndAsync();
-
+        var cacheKey = BuildSourceCacheKey(sourcePath);
+        var lockSlim = _transcodeLocks.GetOrAdd(cacheKey, static _ => new SemaphoreSlim(1, 1));
+        await lockSlim.WaitAsync(cancellationToken);
         try
         {
-            await process.WaitForExitAsync(cancellationToken);
+            if (_transcodedPaths.TryGetValue(sourcePath, out existingPath) && IsUsableFile(existingPath))
+            {
+                return existingPath;
+            }
+
+            Directory.CreateDirectory(_cacheDirectory);
+
+            var outputPath = Path.Combine(_cacheDirectory, $"{cacheKey}.wav");
+            if (IsUsableFile(outputPath))
+            {
+                _transcodedPaths[sourcePath] = outputPath;
+                return outputPath;
+            }
+
+            var tempOutputPath = Path.Combine(_cacheDirectory, $"{cacheKey}.{Guid.NewGuid():N}.tmp.wav");
+            try
+            {
+                var result = await _processRunner.RunAsync(
+                    _ffmpegPath!,
+                    BuildTranscodeArguments(sourcePath, tempOutputPath),
+                    workingDirectory: null,
+                    cancellationToken);
+
+                if (result.ExitCode != 0 || !IsUsableFile(tempOutputPath))
+                {
+                    TryDelete(tempOutputPath);
+                    var details = ProcessOutputFormatter.BuildFailureDetails(result.StandardError, result.StandardOutput);
+                    throw new InvalidOperationException($"ffmpeg could not decode this file.{details}");
+                }
+
+                MoveReplacing(tempOutputPath, outputPath);
+                _transcodedPaths[sourcePath] = outputPath;
+                return outputPath;
+            }
+            catch (OperationCanceledException)
+            {
+                TryDelete(tempOutputPath);
+                throw;
+            }
+            catch
+            {
+                TryDelete(tempOutputPath);
+                throw;
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            TryKill(process);
-            TryDelete(outputPath);
-            await DrainOutputAsync(stdErrTask, stdOutTask);
-            throw;
+            lockSlim.Release();
         }
-
-        await Task.WhenAll(stdErrTask, stdOutTask);
-
-        if (process.ExitCode != 0 || !File.Exists(outputPath))
-        {
-            TryDelete(outputPath);
-            var details = BuildFailureDetails(stdErrTask.Result, stdOutTask.Result);
-            throw new InvalidOperationException($"ffmpeg could not decode this file.{details}");
-        }
-
-        _transcodedPaths[sourcePath] = outputPath;
-        return outputPath;
     }
 
     public void Dispose()
@@ -114,6 +108,21 @@ internal sealed class FfmpegAudioCache : IDisposable
         _disposed = true;
     }
 
+    private static IEnumerable<string> BuildTranscodeArguments(string sourcePath, string outputPath)
+    {
+        yield return "-y";
+        yield return "-i";
+        yield return sourcePath;
+        yield return "-vn";
+        yield return "-acodec";
+        yield return "pcm_s16le";
+        yield return "-ar";
+        yield return "48000";
+        yield return "-ac";
+        yield return "2";
+        yield return outputPath;
+    }
+
     private static string BuildSourceCacheKey(string sourcePath)
     {
         var fileInfo = new FileInfo(sourcePath);
@@ -122,50 +131,13 @@ internal sealed class FfmpegAudioCache : IDisposable
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
-    private static string BuildFailureDetails(string standardError, string standardOutput)
+    private static bool IsUsableFile(string path)
+        => File.Exists(path) && new FileInfo(path).Length > 0;
+
+    private static void MoveReplacing(string sourcePath, string destinationPath)
     {
-        var combined = string.IsNullOrWhiteSpace(standardError)
-            ? standardOutput
-            : standardError;
-
-        if (string.IsNullOrWhiteSpace(combined))
-        {
-            return string.Empty;
-        }
-
-        var lines = combined
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .TakeLast(3);
-
-        var builder = new StringBuilder();
-        builder.Append(' ');
-        builder.Append(string.Join(" | ", lines));
-        return builder.ToString();
-    }
-
-    private static async Task DrainOutputAsync(Task<string> standardErrorTask, Task<string> standardOutputTask)
-    {
-        try
-        {
-            await Task.WhenAll(standardErrorTask, standardOutputTask);
-        }
-        catch
-        {
-        }
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-        }
+        TryDelete(destinationPath);
+        File.Move(sourcePath, destinationPath);
     }
 
     private static void TryDelete(string path)

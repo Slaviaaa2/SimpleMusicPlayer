@@ -26,12 +26,21 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.7" />
     <PackageReference Include="DiscordRichPresence" Version="1.6.1.70" />
     <PackageReference Include="LibVLCSharp" Version="3.9.4" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
     <None Include="scripts\Install-Release.ps1">
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>Install-SimpleMusicPlayer.ps1</TargetPath>
+    </None>
+    <None Include="scripts\install-config.psd1">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>install-config.psd1</TargetPath>
+    </None>
+    <None Include="scripts\modules\**">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>modules\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
     </None>
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">

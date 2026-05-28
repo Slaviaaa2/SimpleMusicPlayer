@@ -39,22 +39,28 @@ internal sealed class PlaybackController : IDisposable
 
     public bool Play(string sourcePath)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
 
-        ReplaceMedia(sourcePath);
+        ReplaceMedia(CreateMedia(sourcePath));
         var media = _currentMedia ?? throw new InvalidOperationException("Playback media could not be initialized.");
-        return _mediaPlayer.Play(media);
+        var started = _mediaPlayer.Play(media);
+        if (!started)
+        {
+            ClearMedia();
+        }
+
+        return started;
     }
 
     public void Pause()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         _mediaPlayer.SetPause(true);
     }
 
     public void Resume()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         _mediaPlayer.SetPause(false);
     }
 
@@ -85,12 +91,15 @@ internal sealed class PlaybackController : IDisposable
         _disposed = true;
     }
 
-    private void ReplaceMedia(string sourcePath)
-    {
-        ClearMedia();
-        _currentMedia = Uri.TryCreate(sourcePath, UriKind.Absolute, out var absoluteUri)
+    private Media CreateMedia(string sourcePath)
+        => Uri.TryCreate(sourcePath, UriKind.Absolute, out var absoluteUri)
             ? new Media(_libVlc, absoluteUri)
             : new Media(_libVlc, new Uri(Path.GetFullPath(sourcePath)));
+
+    private void ReplaceMedia(Media media)
+    {
+        ClearMedia();
+        _currentMedia = media;
     }
 
     private void ClearMedia()
@@ -98,4 +107,7 @@ internal sealed class PlaybackController : IDisposable
         _currentMedia?.Dispose();
         _currentMedia = null;
     }
+
+    private void ThrowIfDisposed()
+        => ObjectDisposedException.ThrowIf(_disposed, this);
 }

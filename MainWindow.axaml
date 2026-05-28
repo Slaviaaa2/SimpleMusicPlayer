@@ -23,6 +23,15 @@
             <Setter Property="Background" Value="#3A7AFE" />
             <Setter Property="BorderBrush" Value="#3A7AFE" />
         </Style>
+        <Style Selector="Button.history-delete">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="#2A2020" />
+            <Setter Property="BorderBrush" Value="#553232" />
+            <Setter Property="Foreground" Value="#FFD7D7" />
+        </Style>
         <Style Selector="TextBox">
             <Setter Property="Background" Value="#181818" />
             <Setter Property="Foreground" Value="#F3F3F3" />
@@ -162,6 +171,11 @@
                     Margin="0,0,8,8"
                     Content="Add Album" />
 
+            <Button x:Name="ReverseQueueButton"
+                    Width="82"
+                    Margin="0,0,8,8"
+                    Content="Reverse" />
+
             <Button x:Name="PrevButton"
                     Width="46"
                     Margin="0,0,8,8"
@@ -236,22 +250,45 @@
                          Margin="0,10,0,0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="10,8"
-                                        Spacing="3">
-                                <TextBlock FontWeight="SemiBold"
-                                           Text="{Binding DisplayName}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Foreground="#A7A7A7"
-                                           Text="{Binding AlbumPath}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <DockPanel Margin="0,3,0,0">
-                                    <TextBlock Foreground="#B7B7B7"
-                                               Text="{Binding TrackCountText}" />
-                                    <TextBlock DockPanel.Dock="Right"
-                                               Foreground="#B7B7B7"
-                                               Text="{Binding LastPlayedText}" />
-                                </DockPanel>
-                            </StackPanel>
+                            <Grid Margin="10,8"
+                                  ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="3">
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding DisplayName}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Foreground="#A7A7A7"
+                                               Text="{Binding AlbumPath}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <DockPanel Margin="0,3,0,0">
+                                        <TextBlock Foreground="#B7B7B7"
+                                                   Text="{Binding TrackCountText}" />
+                                        <TextBlock DockPanel.Dock="Right"
+                                                   Foreground="#B7B7B7"
+                                                   Text="{Binding LastPlayedText}" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="history-delete"
+                                        Click="RemoveAlbumHistoryButton_Click"
+                                        Tag="{Binding}"
+                                        ToolTip.Tip="Remove from Recent Albums">
+                                    <Viewbox Width="15"
+                                             Height="15">
+                                        <Canvas Width="16"
+                                                Height="16">
+                                            <Path Data="M5,2 L11,2 L11.8,3.5 L14,3.5 L14,5 L2,5 L2,3.5 L4.2,3.5 Z"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                            <Path Data="M4,6 L12,6 L11.3,14 L4.7,14 Z"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                            <Path Data="M6.2,7.2 L7.2,7.2 L7.2,12.8 L6.2,12.8 Z M8.8,7.2 L9.8,7.2 L9.8,12.8 L8.8,12.8 Z"
+                                                  Fill="#2A2020" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </Button>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -262,18 +299,41 @@
                          Margin="0,10,0,0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="10,8"
-                                        Spacing="3">
-                                <TextBlock FontWeight="SemiBold"
-                                           Text="{Binding DisplayName}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Foreground="#A7A7A7"
-                                           Text="{Binding ContextText}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Margin="0,3,0,0"
-                                           Foreground="#B7B7B7"
-                                           Text="{Binding LastPlayedText}" />
-                            </StackPanel>
+                            <Grid Margin="10,8"
+                                  ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="3">
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding DisplayName}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Foreground="#A7A7A7"
+                                               Text="{Binding ContextText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Foreground="#B7B7B7"
+                                               Text="{Binding LastPlayedText}" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="history-delete"
+                                        Click="RemoveTrackHistoryButton_Click"
+                                        Tag="{Binding}"
+                                        ToolTip.Tip="Remove from Recent Tracks">
+                                    <Viewbox Width="15"
+                                             Height="15">
+                                        <Canvas Width="16"
+                                                Height="16">
+                                            <Path Data="M5,2 L11,2 L11.8,3.5 L14,3.5 L14,5 L2,5 L2,3.5 L4.2,3.5 Z"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                            <Path Data="M4,6 L12,6 L11.3,14 L4.7,14 Z"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                            <Path Data="M6.2,7.2 L7.2,7.2 L7.2,12.8 L6.2,12.8 Z M8.8,7.2 L9.8,7.2 L9.8,12.8 L8.8,12.8 Z"
+                                                  Fill="#2A2020" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </Button>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

@@ -7,15 +7,27 @@ public sealed class PlaybackItem : INotifyPropertyChanged
 {
     private string _displayName;
 
-    public PlaybackItem(string path, bool isAlbumSource, string? displayName = null)
+    public PlaybackItem(string path, bool isAlbumSource, string? displayName = null, string? contextText = null)
+        : this(path, ResolveLegacyKind(path, isAlbumSource), displayName, contextText)
+    {
+    }
+
+    public PlaybackItem(string path, PlaybackSourceKind kind, string? displayName = null, string? contextText = null)
     {
         Path = path;
-        IsAlbumSource = isAlbumSource;
-        IsUrlSource = Uri.TryCreate(path, UriKind.Absolute, out var uri) &&
-                      (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-                       uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
-        SourceLabel = IsUrlSource ? "URL" : isAlbumSource ? "ALBUM" : "FILE";
-        ContextText = BuildContextText(path, isAlbumSource, IsUrlSource);
+        Kind = kind;
+        IsAlbumSource = kind is PlaybackSourceKind.AlbumTrack or PlaybackSourceKind.PlaylistTrack;
+        IsUrlSource = kind is PlaybackSourceKind.Url or PlaybackSourceKind.PlaylistTrack;
+        SourceLabel = kind switch
+        {
+            PlaybackSourceKind.AlbumTrack => "ALBUM",
+            PlaybackSourceKind.PlaylistTrack => "PLAYLIST",
+            PlaybackSourceKind.Url => "URL",
+            _ => "FILE"
+        };
+        ContextText = string.IsNullOrWhiteSpace(contextText)
+            ? BuildContextText(path, kind)
+            : contextText.Trim();
         _displayName = string.IsNullOrWhiteSpace(displayName)
             ? BuildFallbackName(path, IsUrlSource)
             : displayName.Trim();
@@ -24,6 +36,7 @@ public sealed class PlaybackItem : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string Path { get; }
+    public PlaybackSourceKind Kind { get; }
     public bool IsAlbumSource { get; }
     public bool IsUrlSource { get; }
     public string SourceLabel { get; }
@@ -52,6 +65,37 @@ public sealed class PlaybackItem : INotifyPropertyChanged
         }
     }
 
+    public static PlaybackItem FromFile(string path)
+        => new(path, PlaybackSourceKind.File);
+
+    public static PlaybackItem FromAlbumTrack(string path)
+        => new(path, PlaybackSourceKind.AlbumTrack);
+
+    public static PlaybackItem FromUrl(string url, string? displayName = null)
+        => new(url, PlaybackSourceKind.Url, displayName ?? url);
+
+    public static PlaybackItem FromPlaylistTrack(string url, string playlistTitle, string? title)
+        => new(url, PlaybackSourceKind.PlaylistTrack, title ?? url, $"Playlist · {playlistTitle}");
+
+    private static PlaybackSourceKind ResolveLegacyKind(string path, bool isAlbumSource)
+    {
+        var isUrlSource = Uri.TryCreate(path, UriKind.Absolute, out var uri) &&
+                          (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                           uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+
+        if (isAlbumSource && isUrlSource)
+        {
+            return PlaybackSourceKind.PlaylistTrack;
+        }
+
+        if (isAlbumSource)
+        {
+            return PlaybackSourceKind.AlbumTrack;
+        }
+
+        return isUrlSource ? PlaybackSourceKind.Url : PlaybackSourceKind.File;
+    }
+
     private static string BuildFallbackName(string source, bool isUrlSource)
     {
         if (isUrlSource && Uri.TryCreate(source, UriKind.Absolute, out var uri))
@@ -62,14 +106,15 @@ public sealed class PlaybackItem : INotifyPropertyChanged
         return System.IO.Path.GetFileNameWithoutExtension(source);
     }
 
-    private static string BuildContextText(string source, bool isAlbumSource, bool isUrlSource)
+    private static string BuildContextText(string source, PlaybackSourceKind kind)
     {
-        if (isUrlSource && Uri.TryCreate(source, UriKind.Absolute, out var uri))
+        if (kind is PlaybackSourceKind.Url or PlaybackSourceKind.PlaylistTrack &&
+            Uri.TryCreate(source, UriKind.Absolute, out var uri))
         {
             return uri.AbsoluteUri;
         }
 
-        if (isAlbumSource)
+        if (kind == PlaybackSourceKind.AlbumTrack)
         {
             var albumDirectory = System.IO.Path.GetDirectoryName(source);
             if (!string.IsNullOrWhiteSpace(albumDirectory))

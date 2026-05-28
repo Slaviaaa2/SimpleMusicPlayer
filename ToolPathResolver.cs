@@ -5,28 +5,35 @@ namespace SimpleMusicPlayer;
 internal static class ToolPathResolver
 {
     public static string? ResolveExecutablePath(string toolName)
+        => ResolveTool(toolName).ExecutablePath;
+
+    public static ToolResolution ResolveTool(string toolName)
     {
-        foreach (var candidate in EnumerateLocalToolPaths(toolName).Concat(EnumeratePathToolPaths(toolName)))
+        var searchedPaths = new List<string>();
+
+        foreach (var candidate in EnumerateLocalToolPaths(toolName, ToolResolutionSource.Bundled)
+                     .Concat(EnumeratePathToolPaths(toolName)))
         {
-            if (File.Exists(candidate))
+            searchedPaths.Add(candidate.Path);
+            if (File.Exists(candidate.Path))
             {
-                return candidate;
+                return new ToolResolution(toolName, candidate.Path, candidate.Source, searchedPaths);
             }
         }
 
-        return null;
+        return new ToolResolution(toolName, null, ToolResolutionSource.NotFound, searchedPaths);
     }
 
-    private static IEnumerable<string> EnumerateLocalToolPaths(string toolName)
+    private static IEnumerable<ToolCandidate> EnumerateLocalToolPaths(string toolName, ToolResolutionSource source)
     {
         foreach (var executableName in EnumerateExecutableNames(toolName))
         {
-            yield return Path.Combine(AppContext.BaseDirectory, "tools", toolName, executableName);
-            yield return Path.Combine(AppContext.BaseDirectory, "tools", executableName);
+            yield return new ToolCandidate(Path.Combine(AppContext.BaseDirectory, "tools", toolName, executableName), source);
+            yield return new ToolCandidate(Path.Combine(AppContext.BaseDirectory, "tools", executableName), source);
         }
     }
 
-    private static IEnumerable<string> EnumeratePathToolPaths(string toolName)
+    private static IEnumerable<ToolCandidate> EnumeratePathToolPaths(string toolName)
     {
         var pathValue = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(pathValue))
@@ -38,7 +45,7 @@ internal static class ToolPathResolver
         {
             foreach (var executableName in EnumerateExecutableNames(toolName))
             {
-                yield return Path.Combine(directory, executableName);
+                yield return new ToolCandidate(Path.Combine(directory, executableName), ToolResolutionSource.Path);
             }
         }
     }
@@ -56,4 +63,19 @@ internal static class ToolPathResolver
         yield return $"{toolName}.cmd";
         yield return $"{toolName}.bat";
     }
+
+    private sealed record ToolCandidate(string Path, ToolResolutionSource Source);
+}
+
+internal sealed record ToolResolution(
+    string ToolName,
+    string? ExecutablePath,
+    ToolResolutionSource Source,
+    IReadOnlyList<string> SearchedPaths);
+
+internal enum ToolResolutionSource
+{
+    NotFound,
+    Bundled,
+    Path
 }

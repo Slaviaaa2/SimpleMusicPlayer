@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
@@ -8,6 +7,7 @@ namespace SimpleMusicPlayer;
 public sealed class AppSetupCoordinator
 {
     private readonly AppSetupStateStore _stateStore = new();
+    private readonly ExternalProcessRunner _processRunner = new();
 
     public bool ShouldOfferSetup()
     {
@@ -60,59 +60,41 @@ public sealed class AppSetupCoordinator
             return new AppSetupRunResult(false, "Install-SimpleMusicPlayer.ps1 was not found next to the app.");
         }
 
-        var processStartInfo = new ProcessStartInfo
+        var arguments = new List<string>
         {
-            FileName = "powershell.exe",
-            WorkingDirectory = AppContext.BaseDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            setupScriptPath,
+            "-AppDir",
+            AppContext.BaseDirectory
         };
-
-        processStartInfo.ArgumentList.Add("-NoProfile");
-        processStartInfo.ArgumentList.Add("-ExecutionPolicy");
-        processStartInfo.ArgumentList.Add("Bypass");
-        processStartInfo.ArgumentList.Add("-File");
-        processStartInfo.ArgumentList.Add(setupScriptPath);
-        processStartInfo.ArgumentList.Add("-AppDir");
-        processStartInfo.ArgumentList.Add(AppContext.BaseDirectory);
 
         if (redownloadTools)
         {
-            processStartInfo.ArgumentList.Add("-RedownloadTools");
+            arguments.Add("-RedownloadTools");
         }
 
-        using var process = Process.Start(processStartInfo);
-        if (process is null)
-        {
-            return new AppSetupRunResult(false, "Could not start PowerShell for setup.");
-        }
+        var result = await _processRunner.RunAsync(
+            "powershell.exe",
+            arguments,
+            AppContext.BaseDirectory,
+            cancellationToken);
 
-        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-            await Task.WhenAll(standardErrorTask, standardOutputTask);
-        }
-        catch (OperationCanceledException)
-        {
-            TryKill(process);
-            throw;
-        }
-
-        if (process.ExitCode == 0)
+        if (result.ExitCode == 0)
         {
             _stateStore.MarkCompleted(AppContext.BaseDirectory);
-            return new AppSetupRunResult(true, string.Empty);
+            return new AppSetupRunResult(true, string.Empty, result.ExitCode, result.StandardOutput, result.StandardError);
         }
 
-        var details = BuildFailureDetails(standardErrorTask.Result, standardOutputTask.Result);
-        return new AppSetupRunResult(false, string.IsNullOrWhiteSpace(details)
-            ? "Setup exited with an error."
-            : details);
+        var details = ProcessOutputFormatter.BuildFailureDetails(result.StandardError, result.StandardOutput, maxLines: 4);
+        return new AppSetupRunResult(
+            false,
+            string.IsNullOrWhiteSpace(details) ? "Setup exited with an error." : details,
+            result.ExitCode,
+            result.StandardOutput,
+            result.StandardError);
     }
 
     private static string GetSetupScriptPath()
@@ -169,37 +151,11 @@ public sealed class AppSetupCoordinator
                string.Equals(currentValue, expectedCommand, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string BuildFailureDetails(string standardError, string standardOutput)
-    {
-        var combined = string.IsNullOrWhiteSpace(standardError)
-            ? standardOutput
-            : standardError;
-
-        if (string.IsNullOrWhiteSpace(combined))
-        {
-            return string.Empty;
-        }
-
-        var lines = combined
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .TakeLast(4);
-
-        return string.Join(" | ", lines);
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-        }
-    }
 }
 
-public sealed record AppSetupRunResult(bool Success, string Message);
+public sealed record AppSetupRunResult(
+    bool Success,
+    string Message,
+    int? ExitCode = null,
+    string StandardOutput = "",
+    string StandardError = "");

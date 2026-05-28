@@ -1,60 +1,22 @@
 using System.IO;
-using System.Text.Json;
 
 namespace SimpleMusicPlayer;
 
 public sealed class AppSetupStateStore
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true
-    };
-
-    private readonly string _stateFilePath;
+    private readonly JsonFileStore<AppSetupState> _store;
 
     public AppSetupStateStore()
     {
         var stateDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SimpleMusicPlayer");
-        _stateFilePath = Path.Combine(stateDirectory, "setup-state.json");
+        _store = new JsonFileStore<AppSetupState>(Path.Combine(stateDirectory, "setup-state.json"));
     }
 
-    public AppSetupState Load()
-    {
-        try
-        {
-            if (!File.Exists(_stateFilePath))
-            {
-                return new AppSetupState();
-            }
+    public AppSetupState Load() => _store.Load();
 
-            var json = File.ReadAllText(_stateFilePath);
-            return JsonSerializer.Deserialize<AppSetupState>(json, SerializerOptions) ?? new AppSetupState();
-        }
-        catch
-        {
-            return new AppSetupState();
-        }
-    }
-
-    public void Save(AppSetupState state)
-    {
-        try
-        {
-            var directory = Path.GetDirectoryName(_stateFilePath);
-            if (!string.IsNullOrWhiteSpace(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(state, SerializerOptions);
-            File.WriteAllText(_stateFilePath, json);
-        }
-        catch
-        {
-        }
-    }
+    public void Save(AppSetupState state) => _store.Save(state);
 
     public void MarkCompleted(string installPath)
     {

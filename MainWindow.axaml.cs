@@ -13,7 +13,6 @@ namespace SimpleMusicPlayer;
 
 public partial class MainWindow : Window
 {
-    private static readonly HashSet<string> SupportedExtensions = new(MediaFileTypes.SupportedExtensions, StringComparer.OrdinalIgnoreCase);
     private const int MaxHistoryItems = 20;
 
     private readonly DispatcherTimer _positionTimer;
@@ -39,6 +38,7 @@ public partial class MainWindow : Window
     private readonly TextBlock _remainingText;
     private readonly Button _openButton;
     private readonly Button _addAlbumButton;
+    private readonly Button _reverseQueueButton;
     private readonly Button _prevButton;
     private readonly Button _playPauseButton;
     private readonly Button _nextButton;
@@ -79,6 +79,7 @@ public partial class MainWindow : Window
         _remainingText = this.FindControl<TextBlock>("RemainingText")!;
         _openButton = this.FindControl<Button>("OpenButton")!;
         _addAlbumButton = this.FindControl<Button>("AddAlbumButton")!;
+        _reverseQueueButton = this.FindControl<Button>("ReverseQueueButton")!;
         _prevButton = this.FindControl<Button>("PrevButton")!;
         _playPauseButton = this.FindControl<Button>("PlayPauseButton")!;
         _nextButton = this.FindControl<Button>("NextButton")!;
@@ -100,6 +101,7 @@ public partial class MainWindow : Window
 
         _openButton.Click += OpenButton_Click;
         _addAlbumButton.Click += AddAlbumButton_Click;
+        _reverseQueueButton.Click += ReverseQueueButton_Click;
         _addSourceButton.Click += AddSourceButton_Click;
         _prevButton.Click += PrevButton_Click;
         _playPauseButton.Click += PlayPauseButton_Click;
@@ -192,7 +194,7 @@ public partial class MainWindow : Window
             [
                 new FilePickerFileType("Media files")
                 {
-                    Patterns = [.. MediaFileTypes.SupportedExtensions.Select(static extension => $"*{extension}")]
+                    Patterns = [.. MediaFileTypes.SupportedPatterns]
                 }
             ]
         });
@@ -221,6 +223,8 @@ public partial class MainWindow : Window
 
     private async void AddSourceButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await AddSourceFromInputAsync();
 
+    private void ReverseQueueButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => ReverseQueueOrder();
+
     private async void PrevButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await GoToPreviousTrackAsync();
 
     private async void PlayPauseButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => await TogglePlaybackAsync();
@@ -229,12 +233,7 @@ public partial class MainWindow : Window
 
     private void LoopButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        _loopMode = _loopMode switch
-        {
-            LoopMode.None => LoopMode.All,
-            LoopMode.All => LoopMode.One,
-            _ => LoopMode.None
-        };
+        _loopMode = _loopMode.Next();
 
         UpdateLoopButton();
         UpdateUiState();
@@ -272,7 +271,7 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object? sender, DragEventArgs e)
     {
-        e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -292,6 +291,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RemoveAlbumHistoryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Button { Tag: AlbumHistoryEntry entry } && _albumHistory.Remove(entry))
+        {
+            SaveHistory();
+            SetStatus("Removed album from history.");
+            UpdateUiState();
+        }
+    }
+
+    private void RemoveTrackHistoryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Button { Tag: TrackHistoryEntry entry } && _trackHistory.Remove(entry))
+        {
+            SaveHistory();
+            SetStatus("Removed track from history.");
+            UpdateUiState();
+        }
+    }
+
     private async void QueueList_DoubleTapped(object? sender, TappedEventArgs e)
     {
         if (_queueList.SelectedItem is not PlaybackItem item)
@@ -308,7 +329,7 @@ public partial class MainWindow : Window
 
     private async void Window_Drop(object? sender, DragEventArgs e)
     {
-        var droppedItems = e.Data.GetFiles();
+        var droppedItems = e.DataTransfer.TryGetFiles();
         if (droppedItems is null)
         {
             return;
@@ -350,7 +371,7 @@ public partial class MainWindow : Window
 
                 foreach (var file in albumFiles)
                 {
-                    addedItems.Add(new PlaybackItem(file, true));
+                    addedItems.Add(PlaybackItem.FromAlbumTrack(file));
                 }
 
                 if (albumFiles.Count > 0)
@@ -363,13 +384,13 @@ public partial class MainWindow : Window
 
             if (_ytDlpAudioCache.IsSupportedUrl(source))
             {
-                addedItems.Add(new PlaybackItem(source, false, source));
+                addedItems.Add(PlaybackItem.FromUrl(source));
                 continue;
             }
 
             if (File.Exists(source) && IsSupportedMediaFile(source))
             {
-                addedItems.Add(new PlaybackItem(source, false));
+                addedItems.Add(PlaybackItem.FromFile(source));
             }
         }
 
@@ -514,12 +535,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var previousIndex = _currentIndex <= 0 ? _queue.Count - 1 : _currentIndex - 1;
-        if (_currentIndex == 0 && _loopMode == LoopMode.None)
-        {
-            previousIndex = 0;
-        }
-
+        var previousIndex = PlaybackQueueNavigator.GetPreviousIndex(_currentIndex, _queue.Count, _loopMode);
         await StartTrackAsync(previousIndex);
     }
 
@@ -536,18 +552,37 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_currentIndex >= _queue.Count - 1)
+        var nextIndex = PlaybackQueueNavigator.GetNextIndex(_currentIndex, _queue.Count, _loopMode);
+        if (nextIndex < 0)
         {
-            if (_loopMode == LoopMode.None)
-            {
-                return;
-            }
-
-            await StartTrackAsync(0);
             return;
         }
 
-        await StartTrackAsync(_currentIndex + 1);
+        await StartTrackAsync(nextIndex);
+    }
+
+    private void ReverseQueueOrder()
+    {
+        if (_queue.Count < 2 || _isPreparingTrack)
+        {
+            return;
+        }
+
+        var currentItem = _currentIndex >= 0 && _currentIndex < _queue.Count
+            ? _queue[_currentIndex]
+            : null;
+        var reversedItems = _queue.Reverse().ToList();
+
+        _queue.Clear();
+        foreach (var item in reversedItems)
+        {
+            _queue.Add(item);
+        }
+
+        _currentIndex = currentItem is null ? -1 : _queue.IndexOf(currentItem);
+        _queueList.SelectedIndex = _currentIndex;
+        SetStatus("Queue order reversed.");
+        UpdateUiState();
     }
 
     private void SeekBy(TimeSpan offset)
@@ -605,6 +640,7 @@ public partial class MainWindow : Window
         _nextButton.IsEnabled = _queue.Count > 0 && !_isRunningAppSetup;
         _openButton.IsEnabled = !_isRunningAppSetup;
         _addAlbumButton.IsEnabled = !_isRunningAppSetup;
+        _reverseQueueButton.IsEnabled = _queue.Count > 1 && !_isPreparingTrack && !_isRunningAppSetup;
         _addSourceButton.IsEnabled = !_isRunningAppSetup;
         _loopButton.IsEnabled = !_isRunningAppSetup;
         _sourceInputTextBox.IsEnabled = !_isRunningAppSetup;
@@ -659,12 +695,7 @@ public partial class MainWindow : Window
 
     private void UpdateLoopButton()
     {
-        var loopText = _loopMode switch
-        {
-            LoopMode.None => "Loop Off",
-            LoopMode.One => "Loop One",
-            _ => "Loop All"
-        };
+        var loopText = _loopMode.DisplayText();
 
         _loopButton.Content = loopText.Replace("Loop ", "Loop: ");
         _loopModeBadgeText.Text = loopText;
@@ -702,7 +733,7 @@ public partial class MainWindow : Window
     }
 
     private static bool IsSupportedMediaFile(string path)
-        => SupportedExtensions.Contains(Path.GetExtension(path));
+        => MediaFileTypes.IsSupported(path);
 
     private async Task HandlePlaybackFailureAsync(Exception? exception)
     {
@@ -718,15 +749,11 @@ public partial class MainWindow : Window
         if (_currentIndex >= 0 && _currentIndex < _queue.Count)
         {
             var item = _queue[_currentIndex];
-            var extension = Path.GetExtension(item.Path);
             if (_ytDlpAudioCache.IsSupportedUrl(item.Path) && !_ytDlpAudioCache.IsAvailable)
             {
                 message = "yt-dlp was not found in PATH or the bundled tools directory, so this URL could not be fetched.";
             }
-            else if ((extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) ||
-                      extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) ||
-                      extension.Equals(".opus", StringComparison.OrdinalIgnoreCase)) &&
-                     !_ffmpegAudioCache.IsAvailable)
+            else if (MediaFileTypes.RequiresTranscode(item.Path) && !_ffmpegAudioCache.IsAvailable)
             {
                 message = "ffmpeg was not found in PATH or the bundled tools directory, so this file could not be decoded.";
             }
@@ -756,7 +783,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        var added = AddSources([resolvedSource], append: _queue.Count > 0, shuffle: false);
+        List<PlaybackItem> added;
+        try
+        {
+            added = _ytDlpAudioCache.IsYouTubePlaylistPageUrl(resolvedSource)
+                ? await AddYouTubePlaylistSourceAsync(resolvedSource, append: _queue.Count > 0)
+                : AddSources([resolvedSource], append: _queue.Count > 0, shuffle: false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Could not add source.");
+            await DialogService.ShowInfoAsync(this, "Add source error", $"Could not add this source.\n{ex.Message}");
+            return;
+        }
+
         _sourceInputTextBox.Text = string.Empty;
 
         if (added.Count > 0 && _currentIndex < 0)
@@ -769,6 +809,41 @@ public partial class MainWindow : Window
         {
             await StartTrackAsync(0);
         }
+    }
+
+    private async Task<List<PlaybackItem>> AddYouTubePlaylistSourceAsync(string playlistUrl, bool append)
+    {
+        SetStatus("Fetching playlist...");
+        UpdateUiState();
+
+        var playlist = await _ytDlpAudioCache.GetPlaylistAsync(playlistUrl, CancellationToken.None);
+        var addedItems = playlist.Entries
+            .Select(entry => PlaybackItem.FromPlaylistTrack(entry.Url, playlist.Title, entry.Title))
+            .ToList();
+
+        if (!append)
+        {
+            CancelTrackPreparation();
+            StopPlayback(clearSource: true);
+            _queue.Clear();
+            _currentIndex = -1;
+        }
+
+        foreach (var item in addedItems)
+        {
+            _queue.Add(item);
+        }
+
+        _currentIndex = _queue.Count == 0
+            ? -1
+            : append
+                ? _currentIndex
+                : 0;
+
+        RecordAlbumHistory(playlist.Url, addedItems.Count, playlist.Title);
+        SetStatus(addedItems.Count == 0 ? "Playlist is empty." : "Playlist added.");
+        UpdateUiState();
+        return addedItems;
     }
 
     private async Task OfferAppSetupIfNeededAsync()
@@ -871,7 +946,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            SetStatus(item.IsAlbumSource ? "Cueing album track..." : "Cueing track...");
+            SetStatus(BuildCueStatus(item));
         }
 
         return await _ffmpegAudioCache.GetPlaybackPathAsync(item.Path, cancellationToken);
@@ -898,14 +973,19 @@ public partial class MainWindow : Window
         });
     }
 
-    private void RecordAlbumHistory(string albumPath, int trackCount)
+    private void RecordAlbumHistory(string albumPath, int trackCount, string? displayNameOverride = null)
     {
         if (string.IsNullOrWhiteSpace(albumPath) || trackCount <= 0)
         {
             return;
         }
 
-        var displayName = Path.GetFileName(albumPath);
+        var displayName = displayNameOverride;
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = Path.GetFileName(albumPath);
+        }
+
         if (string.IsNullOrWhiteSpace(displayName))
         {
             displayName = albumPath;
@@ -944,10 +1024,32 @@ public partial class MainWindow : Window
     }
 
     private string BuildTrackHistoryContext(PlaybackItem item)
-        => item.IsUrlSource ? item.Path : item.ContextText;
+        => item.IsUrlSource && !item.IsAlbumSource ? item.Path : item.ContextText;
 
     private async Task ReplayAlbumHistoryAsync(AlbumHistoryEntry entry)
     {
+        if (_ytDlpAudioCache.IsYouTubePlaylistPageUrl(entry.AlbumPath))
+        {
+            List<PlaybackItem> playlistItems;
+            try
+            {
+                playlistItems = await AddYouTubePlaylistSourceAsync(entry.AlbumPath, append: false);
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Could not add source.");
+                await DialogService.ShowInfoAsync(this, "History", $"Playlist could not be loaded.\n{ex.Message}");
+                return;
+            }
+
+            if (playlistItems.Count > 0)
+            {
+                await StartTrackAsync(0);
+            }
+
+            return;
+        }
+
         if (!Directory.Exists(entry.AlbumPath))
         {
             await DialogService.ShowInfoAsync(this, "History", "Album folder was not found.");
@@ -1094,6 +1196,14 @@ public partial class MainWindow : Window
                 ? "Preparing album track..."
                 : "Preparing track...";
 
+    private static string BuildCueStatus(PlaybackItem item)
+        => item.Kind switch
+        {
+            PlaybackSourceKind.AlbumTrack => "Cueing album track...",
+            PlaybackSourceKind.PlaylistTrack => "Cueing playlist track...",
+            _ => "Cueing track..."
+        };
+
     private void ShuffleItems(IList<PlaybackItem> items)
     {
         for (var i = items.Count - 1; i > 0; i--)
@@ -1168,15 +1278,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_currentIndex < _queue.Count - 1)
+        var nextIndex = PlaybackQueueNavigator.GetNextIndex(_currentIndex, _queue.Count, _loopMode);
+        if (nextIndex >= 0)
         {
-            await StartTrackAsync(_currentIndex + 1);
-            return;
-        }
-
-        if (_loopMode == LoopMode.All && _queue.Count > 0)
-        {
-            await StartTrackAsync(0);
+            await StartTrackAsync(nextIndex);
             return;
         }
 
