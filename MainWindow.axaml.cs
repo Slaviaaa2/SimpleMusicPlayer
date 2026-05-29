@@ -41,12 +41,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ConfigureCommands();
         DataContext = _viewModel;
 
         _albumHistory = _viewModel.AlbumHistory;
         _queue = _viewModel.Queue;
         _trackHistory = _viewModel.TrackHistory;
-        ConfigureCommands();
 
         _seekSlider = this.FindControl<Slider>("SeekSlider")!;
         _positionTimer = new DispatcherTimer
