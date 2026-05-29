@@ -8,6 +8,7 @@ public sealed class CliOptions
     public bool Shuffle { get; private set; }
     public int? StartIndex { get; private set; }
     public LoopMode LoopMode { get; private set; } = LoopMode.All;
+    public bool HasExplicitLoopMode { get; private set; }
 
     public static CliOptions Parse(string[] args)
     {
@@ -43,6 +44,7 @@ public sealed class CliOptions
                 case "--loop":
                     if (TryReadValue(args, ref i, out var loopValue))
                     {
+                        options.HasExplicitLoopMode = true;
                         options.LoopMode = loopValue.ToLowerInvariant() switch
                         {
                             "none" => LoopMode.None,

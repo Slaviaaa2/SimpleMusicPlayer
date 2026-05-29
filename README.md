@@ -42,6 +42,14 @@ Windows で手動実行したい場合:
 powershell -ExecutionPolicy Bypass -File .\Install-SimpleMusicPlayer.ps1
 ```
 
+Windows でセットアップ内容を削除したい場合:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Uninstall-SimpleMusicPlayer.ps1
+```
+
+このアンインストーラーは Start Menu ショートカット、`PATH` 追加、Explorer 右クリックメニュー、`Open with` / `Default apps` 登録、Windows のアンインストール登録、セットアップ状態を削除します。再生履歴などのローカルデータも消す場合は `-RemoveUserData`、URL 再生キャッシュは `-RemoveCache`、同梱ダウンロード済みツールは `-RemoveBundledTools`、展開フォルダ自体も消す場合は `-RemoveAppDirectory` を付けて実行します。
+
 macOS / Linux では Windows 用セットアップスクリプトは使いません。必要な外部ツールは次のどちらかで解決してください。
 
 - `PATH` に `yt-dlp` `ffmpeg` と JS runtime (`deno` `node` `bun` `qjs`) を入れる
@@ -155,7 +163,7 @@ Linux x64:
 powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Release.ps1 -RuntimeIdentifier linux-x64
 ```
 
-既定の出力先は `.\publish\SimpleMusicPlayer-<rid>\` です。Windows publish だけ `Install-SimpleMusicPlayer.ps1` を同梱します。
+既定の出力先は `.\publish\SimpleMusicPlayer-<rid>\` です。Windows publish だけ `Install-SimpleMusicPlayer.ps1` と `Uninstall-SimpleMusicPlayer.ps1` を同梱します。
 
 ## GitHub Release
 

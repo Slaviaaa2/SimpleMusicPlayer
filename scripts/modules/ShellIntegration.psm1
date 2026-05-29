@@ -8,6 +8,8 @@ function Install-SmpShellIntegration
         [Parameter(Mandatory = $true)][string]$ProgId,
         [Parameter(Mandatory = $true)][string]$ApplicationKeyName,
         [Parameter(Mandatory = $true)][string]$CapabilitiesKeyName,
+        [Parameter(Mandatory = $true)][string]$UninstallKeyName,
+        [Parameter(Mandatory = $true)][string]$UninstallScriptPath,
         [Parameter(Mandatory = $true)][string[]]$SupportedExtensions
     )
 
@@ -86,10 +88,96 @@ function Install-SmpShellIntegration
         New-ItemProperty -Path $openWithProgidsKey -Name $ProgId -Value "" -PropertyType String -Force | Out-Null
     }
 
+    $quotedUninstallScriptPath = "`"$UninstallScriptPath`""
+    $quotedAppFullPath = "`"$AppFullPath`""
+    $uninstallString = "powershell.exe -ExecutionPolicy Bypass -File $quotedUninstallScriptPath -AppDir $quotedAppFullPath"
+    $targetVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($TargetPath).ProductVersion
+    $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$UninstallKeyName"
+    New-Item -Path $uninstallKey -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "DisplayName" -Value $AppName -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "DisplayIcon" -Value $TargetPath -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "InstallLocation" -Value $AppFullPath -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "Publisher" -Value "zeros" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "UninstallString" -Value $uninstallString -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($targetVersion))
+    {
+        New-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value $targetVersion -PropertyType String -Force | Out-Null
+    }
+
     return [pscustomobject]@{
         ShortcutPath = $shortcutPath
         AddedToPath = ($pathEntries -notcontains $AppFullPath)
     }
 }
 
-Export-ModuleMember -Function Install-SmpShellIntegration
+function Uninstall-SmpShellIntegration
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$AppFullPath,
+        [Parameter(Mandatory = $true)][string]$TargetPath,
+        [Parameter(Mandatory = $true)][string]$ShortcutName,
+        [Parameter(Mandatory = $true)][string]$AppName,
+        [Parameter(Mandatory = $true)][string]$ProgId,
+        [Parameter(Mandatory = $true)][string]$ApplicationKeyName,
+        [Parameter(Mandatory = $true)][string]$CapabilitiesKeyName,
+        [Parameter(Mandatory = $true)][string]$UninstallKeyName,
+        [Parameter(Mandatory = $true)][string[]]$SupportedExtensions
+    )
+
+    $programsPath = [Environment]::GetFolderPath("Programs")
+    $shortcutPath = Join-Path $programsPath $ShortcutName
+    if (Test-Path -LiteralPath $shortcutPath)
+    {
+        Remove-Item -LiteralPath $shortcutPath -Force
+    }
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not [string]::IsNullOrWhiteSpace($userPath))
+    {
+        $normalizedAppPath = Normalize-SmpPath $AppFullPath
+        $updatedEntries = @($userPath -split ';' | Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_) -and
+            (Normalize-SmpPath $_) -ne $normalizedAppPath
+        })
+        [Environment]::SetEnvironmentVariable("Path", ($updatedEntries -join ';'), "User")
+    }
+
+    Remove-Item -LiteralPath "HKCU:\Software\Classes\Directory\shell\SimpleMusicPlayer" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "HKCU:\Software\Classes\Directory\Background\shell\SimpleMusicPlayer" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "HKCU:\Software\Classes\$ProgId" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "HKCU:\Software\Classes\Applications\$ApplicationKeyName" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "HKCU:\Software\$CapabilitiesKeyName" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$UninstallKeyName" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -LiteralPath "HKCU:\Software\RegisteredApplications" -Name $AppName -ErrorAction SilentlyContinue
+
+    foreach ($extension in $SupportedExtensions)
+    {
+        $openWithProgidsKey = "HKCU:\Software\Classes\$extension\OpenWithProgids"
+        Remove-ItemProperty -LiteralPath $openWithProgidsKey -Name $ProgId -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{
+        ShortcutPath = $shortcutPath
+        RemovedFromPath = $true
+    }
+}
+
+function Normalize-SmpPath
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    try
+    {
+        return [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($Path))
+    }
+    catch
+    {
+        return $Path.Trim().TrimEnd('\', '/')
+    }
+}
+
+Export-ModuleMember -Function Install-SmpShellIntegration, Uninstall-SmpShellIntegration

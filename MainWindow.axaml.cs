@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private bool _isPlaying;
     private bool _isMediaLoaded;
     private bool _isPreparingTrack;
+    private bool _hasUserLoopPreference;
     private int _currentIndex = -1;
     private LoopMode _loopMode = LoopMode.All;
 
@@ -69,6 +70,7 @@ public partial class MainWindow : Window
         _historyService = new PlaybackHistoryService();
         _ytDlpAudioCache = new YtDlpAudioCache();
         _loopMode = options.LoopMode;
+        _hasUserLoopPreference = options.HasExplicitLoopMode;
 
         LoadHistory();
         UpdateLoopButton();
@@ -180,6 +182,7 @@ public partial class MainWindow : Window
 
     private void CycleLoopMode()
     {
+        _hasUserLoopPreference = true;
         _loopMode = _loopMode.Next();
 
         UpdateLoopButton();
@@ -325,6 +328,7 @@ public partial class MainWindow : Window
                 ? _currentIndex
                 : 0;
 
+        ApplyDefaultLoopModeForQueue();
         UpdateUiState();
         return [.. collected.Items];
     }
@@ -450,6 +454,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_queue.Count == 1)
+        {
+            await StartTrackAsync(0);
+            return;
+        }
+
         var previousIndex = PlaybackQueueNavigator.GetPreviousIndex(_currentIndex, _queue.Count, _loopMode);
         await StartTrackAsync(previousIndex);
     }
@@ -566,6 +576,26 @@ public partial class MainWindow : Window
 
         _viewModel.LoopButtonContent = loopText.Replace("Loop ", "Loop: ");
         _viewModel.LoopModeBadge = loopText;
+    }
+
+    private void ApplyDefaultLoopModeForQueue()
+    {
+        if (_hasUserLoopPreference)
+        {
+            return;
+        }
+
+        var defaultLoopMode = _queue.Count == 1 && !_queue[0].IsAlbumSource
+            ? LoopMode.None
+            : LoopMode.All;
+
+        if (_loopMode == defaultLoopMode)
+        {
+            return;
+        }
+
+        _loopMode = defaultLoopMode;
+        UpdateLoopButton();
     }
 
     private static IReadOnlyCollection<string> ResolveInitialSources(CliOptions options)
@@ -704,6 +734,7 @@ public partial class MainWindow : Window
                 ? _currentIndex
                 : 0;
 
+        ApplyDefaultLoopModeForQueue();
         RecordAlbumHistory(playlist.Url, addedItems.Count, playlist.Title);
         SetStatus(addedItems.Count == 0 ? "Playlist is empty." : "Playlist added.");
         UpdateUiState();

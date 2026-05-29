@@ -51,6 +51,8 @@ $shellResult = Install-SmpShellIntegration `
     -ProgId $config.ProgId `
     -ApplicationKeyName $config.ApplicationKeyName `
     -CapabilitiesKeyName $config.CapabilitiesKeyName `
+    -UninstallKeyName $config.UninstallKeyName `
+    -UninstallScriptPath (Join-Path $appFullPath "Uninstall-SimpleMusicPlayer.ps1") `
     -SupportedExtensions $config.SupportedExtensions
 
 Save-SmpSetupState -AppFullPath $appFullPath
@@ -60,6 +62,7 @@ Write-Host "Shortcut created at $($shellResult.ShortcutPath)"
 Write-Host "Added to user PATH: $appFullPath"
 Write-Host "Explorer context menu entries installed."
 Write-Host "Registered media file associations for Default apps / Open with."
+Write-Host "Registered Windows uninstall entry."
 if ($SkipToolDownloads)
 {
     Write-Host "Skipped yt-dlp / deno / ffmpeg download."

@@ -5,6 +5,7 @@
     ProgId = "SimpleMusicPlayer.media"
     ApplicationKeyName = "SimpleMusicPlayer.exe"
     CapabilitiesKeyName = "SimpleMusicPlayer"
+    UninstallKeyName = "SimpleMusicPlayer"
     ToolUrls = @{
         YtDlp = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
         Deno = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"

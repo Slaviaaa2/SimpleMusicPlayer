@@ -18,4 +18,29 @@ function Save-SmpSetupState
     $state | ConvertTo-Json | Set-Content -LiteralPath $setupStatePath -Encoding UTF8
 }
 
-Export-ModuleMember -Function Save-SmpSetupState
+function Remove-SmpSetupState
+{
+    param(
+        [switch]$RemoveUserData
+    )
+
+    $stateDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "SimpleMusicPlayer"
+    if (-not (Test-Path -LiteralPath $stateDirectory))
+    {
+        return
+    }
+
+    if ($RemoveUserData)
+    {
+        Remove-Item -LiteralPath $stateDirectory -Recurse -Force
+        return
+    }
+
+    $setupStatePath = Join-Path $stateDirectory "setup-state.json"
+    if (Test-Path -LiteralPath $setupStatePath)
+    {
+        Remove-Item -LiteralPath $setupStatePath -Force
+    }
+}
+
+Export-ModuleMember -Function Save-SmpSetupState, Remove-SmpSetupState
