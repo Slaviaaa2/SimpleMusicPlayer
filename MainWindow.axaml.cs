@@ -564,6 +564,7 @@ public partial class MainWindow : Window
         _viewModel.ApplyPlaybackState(
             _queue,
             _currentIndex,
+            _loopMode,
             _isPreparingTrack,
             _isPlaying,
             _isMediaLoaded,
