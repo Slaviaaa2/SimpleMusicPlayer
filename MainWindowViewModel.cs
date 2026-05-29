@@ -227,7 +227,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public void ApplyPlaybackState(
         IReadOnlyList<PlaybackItem> queue,
         int currentIndex,
-        LoopMode loopMode,
         bool isPreparingTrack,
         bool isPlaying,
         bool isMediaLoaded,
@@ -236,8 +235,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         PlayPauseContent = isPreparingTrack ? "Loading" : isPlaying ? "Pause" : "Play";
         IsPlayPauseEnabled = queue.Count > 0 && !isRunningAppSetup;
         IsPreviousEnabled = queue.Count > 0 && !isRunningAppSetup;
-        IsNextEnabled = queue.Count > 1 && !isRunningAppSetup ||
-            queue.Count == 1 && loopMode != LoopMode.None && !isRunningAppSetup;
+        IsNextEnabled = queue.Count > 0 && !isRunningAppSetup;
         IsOpenEnabled = !isRunningAppSetup;
         IsAddAlbumEnabled = !isRunningAppSetup;
         IsReverseQueueEnabled = queue.Count > 1 && !isPreparingTrack && !isRunningAppSetup;

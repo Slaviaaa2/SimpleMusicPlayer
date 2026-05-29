@@ -95,9 +95,9 @@ public partial class MainWindow : Window
         _viewModel.OpenCommand = new AsyncRelayCommand(_ => OpenFilesAsync());
         _viewModel.AddAlbumCommand = new AsyncRelayCommand(_ => AddAlbumAsync());
         _viewModel.ReverseQueueCommand = new RelayCommand(_ => ReverseQueueOrder());
-        _viewModel.PreviousCommand = new AsyncRelayCommand(_ => GoToPreviousTrackAsync());
-        _viewModel.PlayPauseCommand = new AsyncRelayCommand(_ => TogglePlaybackAsync());
-        _viewModel.NextCommand = new AsyncRelayCommand(_ => GoToNextTrackAsync());
+        _viewModel.PreviousCommand = new AsyncRelayCommand(_ => GoToPreviousTrackAsync(), disableWhileRunning: false);
+        _viewModel.PlayPauseCommand = new AsyncRelayCommand(_ => TogglePlaybackAsync(), disableWhileRunning: false);
+        _viewModel.NextCommand = new AsyncRelayCommand(_ => GoToNextTrackAsync(), disableWhileRunning: false);
         _viewModel.LoopCommand = new RelayCommand(_ => CycleLoopMode());
         _viewModel.AddSourceCommand = new AsyncRelayCommand(_ => AddSourceFromInputAsync());
         _viewModel.RemoveAlbumHistoryCommand = new RelayCommand(RemoveAlbumHistory);
@@ -564,7 +564,6 @@ public partial class MainWindow : Window
         _viewModel.ApplyPlaybackState(
             _queue,
             _currentIndex,
-            _loopMode,
             _isPreparingTrack,
             _isPlaying,
             _isMediaLoaded,
