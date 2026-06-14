@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private bool _isMediaLoaded;
     private bool _isPreparingTrack;
     private bool _hasUserLoopPreference;
+    private bool _needsDiscordTimelineRefresh;
     private int _currentIndex = -1;
     private LoopMode _loopMode = LoopMode.All;
 
@@ -522,6 +523,7 @@ public partial class MainWindow : Window
         nextPosition = TimeSpan.FromSeconds(Math.Clamp(nextPosition.TotalSeconds, 0, duration.TotalSeconds));
         _playbackController.Position = nextPosition;
         UpdateSeekUi();
+        UpdateDiscordPresence();
     }
 
     private void ApplySeekFromSlider()
@@ -533,6 +535,7 @@ public partial class MainWindow : Window
 
         _playbackController.Position = TimeSpan.FromSeconds(_viewModel.SeekValue);
         UpdateSeekUi();
+        UpdateDiscordPresence();
     }
 
     private void UpdateSeekUi()
@@ -557,6 +560,12 @@ public partial class MainWindow : Window
 
         _viewModel.ElapsedText = FormatTime(position);
         _viewModel.RemainingText = $"-{FormatTime(duration - position)}";
+
+        if (_needsDiscordTimelineRefresh && _isPlaying)
+        {
+            UpdateDiscordPresence();
+            _needsDiscordTimelineRefresh = false;
+        }
     }
 
     private void UpdateUiState()
@@ -623,7 +632,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        _discordPresence.SetNowPlaying(_queue[_currentIndex], _currentIndex, _queue.Count, _isPlaying);
+        var position = _playbackController?.Position ?? TimeSpan.Zero;
+        var duration = _playbackController?.Duration ?? TimeSpan.Zero;
+        _discordPresence.SetNowPlaying(_queue[_currentIndex], _currentIndex, _queue.Count, _isPlaying, position, duration);
     }
 
     private static bool IsSupportedMediaFile(string path)
@@ -1108,6 +1119,7 @@ public partial class MainWindow : Window
             _isPreparingTrack = false;
             _isMediaLoaded = true;
             _isPlaying = true;
+            _needsDiscordTimelineRefresh = true;
             _positionTimer.Start();
             UpdateSeekUi();
             RecordTrackHistory();

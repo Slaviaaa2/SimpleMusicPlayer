@@ -26,7 +26,13 @@ public sealed class DiscordPresenceService : IDisposable
 
     public bool IsEnabled => _isInitialized;
 
-    public void SetNowPlaying(PlaybackItem item, int currentIndex, int totalCount, bool isPlaying)
+    public void SetNowPlaying(
+        PlaybackItem item,
+        int currentIndex,
+        int totalCount,
+        bool isPlaying,
+        TimeSpan position,
+        TimeSpan duration)
     {
         if (!_isInitialized || _client is null)
         {
@@ -40,9 +46,17 @@ public sealed class DiscordPresenceService : IDisposable
 
         var presence = new RichPresence
         {
+            Type = ActivityType.Listening,
             Details = item.DisplayName,
             State = state
         };
+
+        if (isPlaying && duration > TimeSpan.Zero)
+        {
+            var boundedPosition = TimeSpan.FromSeconds(Math.Clamp(position.TotalSeconds, 0, duration.TotalSeconds));
+            var now = DateTime.UtcNow;
+            presence.Timestamps = new Timestamps(now - boundedPosition, now + (duration - boundedPosition));
+        }
 
         _client.SetPresence(presence);
     }
