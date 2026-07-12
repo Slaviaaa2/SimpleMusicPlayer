@@ -1,0 +1,16 @@
+[package]
+name = "smp-playback"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+smp-core = { path = "../smp-core" }
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+tokio = { workspace = true, features = ["process", "rt-multi-thread", "sync", "time", "macros", "io-util"] }
+tokio-util.workspace = true
+sha2.workspace = true
+hex.workspace = true
+uuid.workspace = true
+vlc-rs = { git = "https://code.videolan.org/videolan/vlc-rs.git" }

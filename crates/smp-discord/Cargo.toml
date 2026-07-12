@@ -1,0 +1,8 @@
+[package]
+name = "smp-discord"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+smp-core = { path = "../smp-core" }
+discord-rich-presence = "1.1"

@@ -19,3 +19,9 @@ artifacts/
 publish/
 release/
 cache/
+
+# Rust (Cargo.lock is committed: the workspace produces a binary)
+target/
+
+# Vendored native libvlc binaries (fetch with scripts/fetch-libvlc.ps1)
+vendor/

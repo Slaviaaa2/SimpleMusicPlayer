@@ -1,0 +1,36 @@
+[package]
+name = "smp-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "SimpleMusicPlayer"
+path = "src/main.rs"
+
+[dependencies]
+smp-core = { path = "../smp-core" }
+smp-playback = { path = "../smp-playback" }
+smp-discord = { path = "../smp-discord" }
+smp-setup = { path = "../smp-setup" }
+slint = { version = "1.17", features = ["raw-window-handle-06"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+rfd = "0.17"
+
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
+windows-core = "0.62"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Console",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_UI_Shell",
+] }
+
+[build-dependencies]
+slint-build = "1.17"
+winresource = "0.1"

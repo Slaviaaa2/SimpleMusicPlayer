@@ -1,0 +1,19 @@
+[package]
+name = "smp-setup"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+smp-core = { path = "../smp-core" }
+dirs.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+reqwest = { version = "0.13", features = ["blocking"] }
+zip = "8"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

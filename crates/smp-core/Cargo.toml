@@ -1,0 +1,12 @@
+[package]
+name = "smp-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+rand.workspace = true
+url.workspace = true

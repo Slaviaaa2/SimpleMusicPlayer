@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/smp-core",
+    "crates/smp-playback",
+    "crates/smp-app",
+    "crates/smp-discord",
+    "crates/smp-setup",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+dirs = "6"
+rand = "0.10"
+url = "2.5"
+tokio = "1"
+tokio-util = "0.7"
+sha2 = "0.11"
+hex = "0.4"
+rfd = "0.17"
+uuid = { version = "1", features = ["v4"] }

@@ -1,0 +1,1021 @@
+import { TabWidget, ListView } from "std-widgets.slint";
+
+export struct QueueItemData {
+    source-label: string,
+    display-name: string,
+    context-text: string,
+}
+
+export struct AlbumHistoryData {
+    display-name: string,
+    album-path: string,
+    track-count-text: string,
+    last-played-text: string,
+}
+
+export struct TrackHistoryData {
+    display-name: string,
+    context-text: string,
+    last-played-text: string,
+}
+
+component Badge inherits Rectangle {
+    in property <string> text;
+    background: #202020;
+    border-color: #333333;
+    border-width: 1px;
+    border-radius: 10px;
+    height: 26px;
+    width: label.preferred-width + 16px;
+    label := Text {
+        text: root.text;
+        color: #D6D6D6;
+        font-size: 12px;
+        x: 8px;
+        y: (parent.height - self.height) / 2;
+    }
+}
+
+component AppButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 34px;
+    background: root.primary
+        ? (touch.pressed ? #2E6BE0 : touch.has-hover ? #4A87FF : #3A7AFE)
+        : (touch.pressed ? #303030 : touch.has-hover ? #2E2E2E : #262626);
+    border-color: root.primary ? #3A7AFE : (touch.has-hover ? #4A4A4A : #3A3A3A);
+    border-width: 1px;
+    border-radius: 4px;
+    opacity: root.enabled ? 1.0 : 0.5;
+    animate background { duration: 80ms; }
+
+    Text {
+        text: root.text;
+        color: #F3F3F3;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TrashIcon inherits Path {
+    in property <color> icon-color: #FFD7D7;
+    width: 15px;
+    height: 15px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    commands: "M5,2 L11,2 L11.8,3.5 L14,3.5 L14,5 L2,5 L2,3.5 L4.2,3.5 Z";
+    fill: root.icon-color;
+}
+
+component TrashIconLid inherits Path {
+    in property <color> icon-color: #FFD7D7;
+    width: 15px;
+    height: 15px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    commands: "M4,6 L12,6 L11.3,14 L4.7,14 Z";
+    fill: root.icon-color;
+}
+
+component TrashIconSlats inherits Path {
+    width: 15px;
+    height: 15px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    commands: "M6.2,7.2 L7.2,7.2 L7.2,12.8 L6.2,12.8 Z M8.8,7.2 L9.8,7.2 L9.8,12.8 L8.8,12.8 Z";
+    fill: #2A2020;
+}
+
+component DeleteButton inherits Rectangle {
+    callback clicked();
+
+    width: 34px;
+    height: 30px;
+    background: touch.pressed ? #331F1F : touch.has-hover ? #2E2222 : #2A2020;
+    border-color: touch.has-hover ? #6B3E3E : #553232;
+    border-width: 1px;
+    border-radius: 4px;
+    animate background { duration: 80ms; }
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 15px;
+                height: 15px;
+                TrashIcon { }
+                TrashIconLid { }
+                TrashIconSlats { }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+    }
+}
+
+component AppTextInput inherits Rectangle {
+    in property <string> placeholder;
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    callback accepted();
+
+    height: 36px;
+    background: #181818;
+    border-color: #353535;
+    border-width: 1px;
+    border-radius: 4px;
+    clip: true;
+
+    // Sits behind the TextInput: TextInput ignores right-button presses
+    // (EventIgnored), so only those fall through here; left clicks never
+    // reach this area, keeping cursor placement and selection intact.
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                input.focus();
+                input.select-all();
+                input.paste();
+            }
+        }
+    }
+
+    if input.text == "" : Text {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.placeholder;
+        color: #6E6E6E;
+        font-size: 13px;
+    }
+
+    input := TextInput {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        vertical-alignment: center;
+        color: #F3F3F3;
+        font-size: 13px;
+        single-line: true;
+        enabled: root.enabled;
+        accepted => { root.accepted(); }
+    }
+}
+
+component SeekSlider inherits Rectangle {
+    in property <float> maximum: 1;
+    in-out property <float> value: 0;
+    callback drag-started();
+    callback drag-finished(float);
+
+    height: 16px;
+
+    track := Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 100%;
+        height: 4px;
+        background: #282828;
+        border-radius: 2px;
+
+        fill := Rectangle {
+            x: 0;
+            width: parent.width * (root.maximum > 0 ? (root.value / root.maximum) : 0);
+            height: 100%;
+            background: #3A7AFE;
+            border-radius: 2px;
+        }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.drag-started();
+                if (root.maximum > 0) {
+                    root.value = max(0, min(1, self.mouse-x / self.width)) * root.maximum;
+                }
+            }
+            if (event.kind == PointerEventKind.up) {
+                root.drag-finished(root.value);
+            }
+        }
+
+        moved => {
+            if (self.pressed && root.maximum > 0) {
+                root.value = max(0, min(1, self.mouse-x / self.width)) * root.maximum;
+            }
+        }
+    }
+}
+
+component VolumeIcon inherits Rectangle {
+    in property <bool> muted: false;
+    in property <float> volume: 100;
+    callback clicked();
+
+    property <bool> silent: root.muted || root.volume < 1;
+    property <color> icon-color: root.muted ? #7A7A7A : (root.volume > 100 ? #C77DFF : #D6D6D6);
+
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    background: touch.pressed ? #303030 : touch.has-hover ? #262626 : transparent;
+    animate background { duration: 80ms; }
+
+    Path {
+        x: 3px;
+        y: 3px;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        // Speaker body plus, depending on state: an X (muted/0%), one wave
+        // (quiet), or two waves (loud).
+        commands: root.silent
+            ? "M2,5.5 L5,5.5 L9,2.5 L9,13.5 L5,10.5 L2,10.5 Z M10.4,6.1 L11.4,5.1 L12.9,6.6 L14.4,5.1 L15.4,6.1 L13.9,7.6 L15.4,9.1 L14.4,10.1 L12.9,8.6 L11.4,10.1 L10.4,9.1 L11.9,7.6 Z"
+            : (root.volume < 50
+                ? "M2,5.5 L5,5.5 L9,2.5 L9,13.5 L5,10.5 L2,10.5 Z M10.8,5.6 C12.2,7 12.2,9 10.8,10.4 L11.7,11.3 C13.6,9.4 13.6,6.6 11.7,4.7 Z"
+                : "M2,5.5 L5,5.5 L9,2.5 L9,13.5 L5,10.5 L2,10.5 Z M10.8,5.6 C12.2,7 12.2,9 10.8,10.4 L11.7,11.3 C13.6,9.4 13.6,6.6 11.7,4.7 Z M12.6,3.4 C15.2,6 15.2,10 12.6,12.6 L13.5,13.5 C16.6,10.4 16.6,5.6 13.5,2.5 Z");
+        fill: root.icon-color;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+    }
+}
+
+component VolumeSlider inherits Rectangle {
+    in-out property <float> value: 100;
+    // Held-Ctrl state, owned by the window's key handling; pointer events
+    // re-sync it so a Ctrl press missed by the FocusScope (e.g. while a
+    // TextInput has focus) still opens the boost extension on hover.
+    in-out property <bool> boost-unlocked: false;
+    in property <bool> muted: false;
+    callback changed(float);
+    callback escape-pressed();
+
+    // Latched at pointer-down so a boost-range drag keeps the 0-200 scale
+    // even when Ctrl is not held and the value crosses below 100%.
+    property <bool> drag-boost: false;
+    property <bool> boost-visible: root.boost-unlocked || root.value > 100 || (touch.pressed && root.drag-boost);
+    // The bar keeps its length; in boost mode the full width simply maps
+    // 0-200 linearly, which puts 100% at the midpoint. `range` drives input,
+    // `display-range` trails it with the pop animation for rendering.
+    property <float> range: root.boost-visible ? 200 : 100;
+    property <float> display-range: root.boost-visible ? 200 : 100;
+    animate display-range { duration: 170ms; easing: cubic-bezier(0.34, 1.4, 0.64, 1); }
+
+    function value-at(pos: length, shift: bool) -> float {
+        return clamp(
+            shift ? round(pos / root.width * root.range / 25) * 25
+                  : pos / root.width * root.range,
+            0,
+            root.range);
+    }
+
+    width: 132px;
+    height: 16px;
+
+    track := Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 100%;
+        height: 4px;
+        background: #282828;
+        border-radius: 2px;
+        clip: true;
+        opacity: root.muted ? 0.45 : 1;
+        animate opacity { duration: 120ms; }
+
+        fill := Rectangle {
+            x: 0;
+            width: parent.width * min(root.value, 100) / root.display-range;
+            height: 100%;
+            background: #3A7AFE;
+            border-radius: 2px;
+        }
+
+        // Reveal-clip over a fixed-size gradient so the colors stay anchored
+        // to the 100-200% zone instead of stretching with the fill.
+        boost-clip := Rectangle {
+            x: parent.width * 100 / root.display-range;
+            width: parent.width * max(root.value - 100, 0) / root.display-range;
+            height: 100%;
+            clip: true;
+            Rectangle {
+                x: 0;
+                width: track.width / 2;
+                height: 100%;
+                background: @linear-gradient(90deg, #3A7AFE 0%, #A05CFF 35%, #FF5CA8 70%, #FFB13A 100%);
+            }
+        }
+    }
+
+    handle := Rectangle {
+        x: root.width * root.value / root.display-range - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: root.muted ? #8E8E8E : (root.value > 100 ? #B44CFF : #E8E8E8);
+        border-color: #121212;
+        border-width: 1px;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        pointer-event(event) => {
+            root.boost-unlocked = event.modifiers.control;
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                fs.focus();
+                root.drag-boost = root.boost-unlocked || root.value > 100;
+                root.value = root.value-at(self.mouse-x, event.modifiers.shift);
+                root.changed(root.value);
+            }
+            if (event.kind == PointerEventKind.move && self.pressed) {
+                root.value = root.value-at(self.mouse-x, event.modifiers.shift);
+                root.changed(root.value);
+            }
+        }
+    }
+
+    // Invisible focus holder: while focused, plain Left/Right nudge the
+    // volume by 1% (Ctrl raises the cap to 200%); everything else is
+    // rejected so it bubbles up to the window shortcuts.
+    fs := FocusScope {
+        width: 0;
+        height: 0;
+
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow || event.text == Key.RightArrow) {
+                root.value = clamp(
+                    round(root.value) + (event.text == Key.RightArrow ? 1 : -1),
+                    0,
+                    event.modifiers.control || root.value > 100 ? 200 : 100);
+                root.changed(root.value);
+                return accept;
+            }
+            if (event.text == Key.Escape) {
+                root.escape-pressed();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component QueueRow inherits Rectangle {
+    in property <QueueItemData> item;
+    callback double-clicked();
+    height: 56px;
+    background: row-touch.has-hover ? #232323 : transparent;
+    animate background { duration: 80ms; }
+
+    row-touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        double-clicked => { root.double-clicked(); }
+    }
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 48px;
+            height: 22px;
+            background: #272727;
+            border-color: #3A3A3A;
+            border-width: 1px;
+            border-radius: 6px;
+            Text {
+                text: root.item.source-label;
+                color: #D6D6D6;
+                font-size: 11px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                width: 100%;
+                height: 100%;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+            alignment: center;
+            Text {
+                text: root.item.display-name;
+                color: #F3F3F3;
+                font-weight: 600;
+                font-size: 13px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.context-text;
+                color: #A7A7A7;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component AlbumHistoryRow inherits Rectangle {
+    in property <AlbumHistoryData> item;
+    callback remove-clicked();
+    callback double-clicked();
+    height: 76px;
+    background: row-touch.has-hover ? #232323 : transparent;
+    animate background { duration: 80ms; }
+
+    row-touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        double-clicked => { root.double-clicked(); }
+    }
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        VerticalLayout {
+            spacing: 3px;
+            alignment: center;
+
+            Text {
+                text: root.item.display-name;
+                color: #F3F3F3;
+                font-weight: 600;
+                font-size: 13px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.album-path;
+                color: #A7A7A7;
+                font-size: 12px;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                Text {
+                    text: root.item.track-count-text;
+                    color: #B7B7B7;
+                    font-size: 12px;
+                }
+                Rectangle { }
+                Text {
+                    text: root.item.last-played-text;
+                    color: #B7B7B7;
+                    font-size: 12px;
+                }
+            }
+        }
+
+        DeleteButton {
+            clicked => { root.remove-clicked(); }
+        }
+    }
+}
+
+component TrackHistoryRow inherits Rectangle {
+    in property <TrackHistoryData> item;
+    callback remove-clicked();
+    callback double-clicked();
+    height: 76px;
+    background: row-touch.has-hover ? #232323 : transparent;
+    animate background { duration: 80ms; }
+
+    row-touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        double-clicked => { root.double-clicked(); }
+    }
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        VerticalLayout {
+            spacing: 3px;
+            alignment: center;
+
+            Text {
+                text: root.item.display-name;
+                color: #F3F3F3;
+                font-weight: 600;
+                font-size: 13px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.context-text;
+                color: #A7A7A7;
+                font-size: 12px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.last-played-text;
+                color: #B7B7B7;
+                font-size: 12px;
+            }
+        }
+
+        DeleteButton {
+            clicked => { root.remove-clicked(); }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Simple Music Player";
+    icon: @image-url("../../../Assets/app-icon.png");
+    preferred-width: 760px;
+    preferred-height: 585px;
+    min-width: 560px;
+    min-height: 465px;
+    background: #121212;
+
+    in-out property <string> track-title: "Drop files or use Open.";
+    in-out property <string> status: "Ready.";
+    in-out property <string> queue-info: "Supports local files, album folders, and yt-dlp-backed URL playback.";
+    in-out property <string> source-badge: "Standby";
+    in-out property <string> current-index-text: "Track --";
+    in-out property <string> queue-count-text: "Queue empty";
+    in-out property <string> loop-mode-badge: "Loop All";
+    in-out property <string> elapsed-text: "00:00";
+    in-out property <string> remaining-text: "00:00";
+    in-out property <string> source-input: "";
+    in-out property <string> play-pause-content: "Play";
+    in-out property <string> loop-button-content: "Loop: All";
+    in-out property <string> queue-summary: "0 queued";
+    in-out property <float> seek-value: 0;
+    in-out property <float> seek-maximum: 1;
+    in-out property <float> volume-value: 100;
+    in-out property <bool> volume-muted: false;
+    property <bool> volume-boost-held: false;
+    property <int> volume-display: round(root.volume-value);
+    property <color> volume-text-color: root.volume-muted
+        ? #7A7A7A
+        : (root.volume-value > 100 ? #C77DFF : #CFCFCF);
+
+    in-out property <bool> is-play-pause-enabled: false;
+    in-out property <bool> is-previous-enabled: false;
+    in-out property <bool> is-next-enabled: false;
+    in-out property <bool> is-open-enabled: true;
+    in-out property <bool> is-add-album-enabled: true;
+    in-out property <bool> is-reverse-queue-enabled: false;
+    in-out property <bool> is-add-source-enabled: true;
+    in-out property <bool> is-loop-enabled: true;
+    in-out property <bool> is-source-input-enabled: true;
+    in-out property <bool> is-seek-enabled: false;
+    in-out property <bool> is-preparation-visible: false;
+
+    in-out property <[QueueItemData]> queue: [];
+    in-out property <[AlbumHistoryData]> album-history: [];
+    in-out property <[TrackHistoryData]> track-history: [];
+
+    // Modal dialog overlay (the Slint counterpart of DialogService.cs's
+    // custom-styled dialog window). An empty cancel text hides the cancel
+    // button, turning the dialog into a plain info box.
+    in-out property <bool> dialog-visible: false;
+    in-out property <string> dialog-title: "";
+    in-out property <string> dialog-message: "";
+    in-out property <string> dialog-confirm-text: "OK";
+    in-out property <string> dialog-cancel-text: "";
+    callback dialog-confirmed();
+    callback dialog-cancelled();
+
+    callback open-clicked();
+    callback add-album-clicked();
+    callback reverse-queue-clicked();
+    callback previous-clicked();
+    callback play-pause-clicked();
+    callback next-clicked();
+    callback loop-clicked();
+    callback add-source-clicked();
+    callback remove-album-history-clicked(int);
+    callback remove-track-history-clicked(int);
+    callback queue-item-double-clicked(int);
+    callback album-history-double-clicked(int);
+    callback track-history-double-clicked(int);
+    callback seek-drag-started();
+    callback seek-drag-finished(float);
+    callback key-space();
+    callback key-seek(float);
+    callback key-track-nav(bool);
+    callback volume-changed(float);
+    callback mute-changed(bool);
+
+    forward-focus: shortcuts;
+
+    shortcuts := FocusScope {
+        key-released(event) => {
+            if (event.text == Key.Control) {
+                root.volume-boost-held = false;
+                return accept;
+            }
+            reject
+        }
+
+        key-pressed(event) => {
+            if (event.text == Key.Control) {
+                root.volume-boost-held = true;
+                return accept;
+            }
+            if (event.text == " ") {
+                root.key-space();
+                return accept;
+            }
+            if (event.text == Key.LeftArrow && event.modifiers.control) {
+                root.key-track-nav(false);
+                return accept;
+            }
+            if (event.text == Key.RightArrow && event.modifiers.control) {
+                root.key-track-nav(true);
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                root.key-seek(-5);
+                return accept;
+            }
+            if (event.text == Key.RightArrow) {
+                root.key-seek(5);
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 0px;
+
+            // Title / status / badges
+            VerticalLayout {
+                spacing: 6px;
+
+                Text {
+                    text: root.track-title;
+                    color: #F3F3F3;
+                    font-size: 26px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    Text {
+                        text: root.queue-info;
+                        color: #A7A7A7;
+                        font-size: 13px;
+                        overflow: elide;
+                    }
+                    Rectangle { }
+                    Text {
+                        text: root.status;
+                        color: #A7A7A7;
+                        font-size: 13px;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Badge { text: root.source-badge; }
+                    Badge { text: root.current-index-text; }
+                    Badge { text: root.queue-count-text; }
+                    Badge { text: root.loop-mode-badge; }
+                }
+            }
+
+            // Source input row
+            VerticalLayout {
+                padding-top: 14px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    AppTextInput {
+                        placeholder: "Paste a URL, file path, or folder path";
+                        text <=> root.source-input;
+                        enabled: root.is-source-input-enabled;
+                        accepted => { root.add-source-clicked(); }
+                    }
+                    AppButton {
+                        width: 92px;
+                        text: "Add";
+                        primary: true;
+                        enabled: root.is-add-source-enabled;
+                        clicked => { root.add-source-clicked(); }
+                    }
+                }
+
+                if root.is-preparation-visible : Rectangle {
+                    height: 4px;
+                    background: #282828;
+                    border-radius: 2px;
+                    Rectangle {
+                        width: 40%;
+                        height: 100%;
+                        background: #3A7AFE;
+                        border-radius: 2px;
+                    }
+                }
+            }
+
+            // Seek
+            Rectangle {
+                height: 32px;
+                SeekSlider {
+                    y: 16px;
+                    width: 100%;
+                    maximum: root.seek-maximum;
+                    value <=> root.seek-value;
+                    drag-started => { root.seek-drag-started(); }
+                    drag-finished(v) => { root.seek-drag-finished(v); }
+                }
+            }
+
+            HorizontalLayout {
+                padding-top: 8px;
+                Text {
+                    text: root.elapsed-text;
+                    color: #CFCFCF;
+                    font-size: 12px;
+                }
+                Rectangle { }
+                Text {
+                    text: root.remaining-text;
+                    color: #CFCFCF;
+                    font-size: 12px;
+                }
+            }
+
+            // Transport buttons
+            HorizontalLayout {
+                padding-top: 16px;
+                spacing: 8px;
+
+                AppButton {
+                    width: 72px;
+                    text: "Open";
+                    enabled: root.is-open-enabled;
+                    clicked => { root.open-clicked(); }
+                }
+                AppButton {
+                    width: 96px;
+                    text: "Add Album";
+                    enabled: root.is-add-album-enabled;
+                    clicked => { root.add-album-clicked(); }
+                }
+                AppButton {
+                    width: 82px;
+                    text: "Reverse";
+                    enabled: root.is-reverse-queue-enabled;
+                    clicked => { root.reverse-queue-clicked(); }
+                }
+                AppButton {
+                    width: 46px;
+                    text: "|<";
+                    enabled: root.is-previous-enabled;
+                    clicked => { root.previous-clicked(); }
+                }
+                AppButton {
+                    width: 76px;
+                    text: root.play-pause-content;
+                    primary: true;
+                    enabled: root.is-play-pause-enabled;
+                    clicked => { root.play-pause-clicked(); }
+                }
+                AppButton {
+                    width: 46px;
+                    text: ">|";
+                    enabled: root.is-next-enabled;
+                    clicked => { root.next-clicked(); }
+                }
+                AppButton {
+                    width: 84px;
+                    text: root.loop-button-content;
+                    enabled: root.is-loop-enabled;
+                    clicked => { root.loop-clicked(); }
+                }
+            }
+
+            // Volume
+            HorizontalLayout {
+                padding-top: 12px;
+                spacing: 10px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: center;
+                    VolumeIcon {
+                        muted: root.volume-muted;
+                        volume: root.volume-value;
+                        clicked => {
+                            root.volume-muted = !root.volume-muted;
+                            root.mute-changed(root.volume-muted);
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    VolumeSlider {
+                        value <=> root.volume-value;
+                        boost-unlocked <=> root.volume-boost-held;
+                        muted: root.volume-muted;
+                        changed(v) => {
+                            // Adjusting the volume implicitly unmutes.
+                            if (root.volume-muted) {
+                                root.volume-muted = false;
+                                root.mute-changed(false);
+                            }
+                            root.volume-changed(v);
+                        }
+                        escape-pressed => { shortcuts.focus(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 1px;
+                        Text {
+                            text: root.volume-display;
+                            color: root.volume-text-color;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "%";
+                            color: root.volume-text-color;
+                            font-size: 12px;
+                        }
+                    }
+                }
+            }
+
+            // Tabs
+            Rectangle {
+                height: 260px;
+                VerticalLayout {
+                    padding-top: 16px;
+
+                    TabWidget {
+                        Tab {
+                            title: "Queue";
+                            VerticalLayout {
+                                padding-top: 10px;
+                                spacing: 10px;
+                                Text {
+                                    text: root.queue-summary;
+                                    color: #A7A7A7;
+                                    font-size: 12px;
+                                }
+                                Rectangle {
+                                    background: #191919;
+                                    border-color: #2F2F2F;
+                                    border-width: 1px;
+                                    ListView {
+                                        for entry[i] in root.queue : QueueRow {
+                                            item: entry;
+                                            width: parent.width;
+                                            double-clicked => { root.queue-item-double-clicked(i); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Tab {
+                            title: "Recent Albums";
+                            Rectangle {
+                                background: #191919;
+                                border-color: #2F2F2F;
+                                border-width: 1px;
+                                ListView {
+                                    for entry[i] in root.album-history : AlbumHistoryRow {
+                                        item: entry;
+                                        width: parent.width;
+                                        remove-clicked => { root.remove-album-history-clicked(i); }
+                                        double-clicked => { root.album-history-double-clicked(i); }
+                                    }
+                                }
+                            }
+                        }
+                        Tab {
+                            title: "Recent Tracks";
+                            Rectangle {
+                                background: #191919;
+                                border-color: #2F2F2F;
+                                border-width: 1px;
+                                ListView {
+                                    for entry[i] in root.track-history : TrackHistoryRow {
+                                        item: entry;
+                                        width: parent.width;
+                                        remove-clicked => { root.remove-track-history-clicked(i); }
+                                        double-clicked => { root.track-history-double-clicked(i); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: "Space: Play/Pause  Left/Right: Seek  Ctrl+Left/Right: Track  Double click queue or history: Replay";
+                    color: #8E8E8E;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Volume: icon = mute  click then Left/Right = 1%  Shift+Drag = 25% steps  Hold Ctrl = boost to 200%";
+                    color: #8E8E8E;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+
+    if root.dialog-visible : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000B0;
+
+        // Swallows clicks outside the dialog box so the UI behind stays
+        // inert while the dialog is up (ShowDialog-style modality).
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        Rectangle {
+            width: min(440px, root.width - 40px);
+            background: #161616;
+            border-color: #353535;
+            border-width: 1px;
+            border-radius: 6px;
+            height: dialog-content.preferred-height + 40px;
+
+            dialog-content := VerticalLayout {
+                x: 20px;
+                y: 20px;
+                width: parent.width - 40px;
+                spacing: 18px;
+
+                Text {
+                    text: root.dialog-title;
+                    color: #F3F3F3;
+                    font-size: 16px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.dialog-message;
+                    color: #F3F3F3;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+
+                    if root.dialog-cancel-text != "" : AppButton {
+                        width: max(96px, 40px + 8px * root.dialog-cancel-text.character-count);
+                        text: root.dialog-cancel-text;
+                        clicked => { root.dialog-cancelled(); }
+                    }
+                    AppButton {
+                        width: max(96px, 40px + 8px * root.dialog-confirm-text.character-count);
+                        text: root.dialog-confirm-text;
+                        primary: true;
+                        clicked => { root.dialog-confirmed(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+# vlc-sys's Windows build script (via its vswhom-sys dependency) fails to link
+# with the current Rust/MSVC toolchain because it doesn't pull in advapi32.lib
+# for the registry calls it uses to locate Visual Studio. Confirmed via a real
+# build spike (see IMPLEMENTATION_PLAN.md, Phase 0) that adding this link arg
+# fixes it; no code change on our side is possible since the failure is inside
+# the dependency's own build script.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=advapi32.lib"]
+
+# Where vlc-sys's Windows build script finds libvlc.dll to generate an import
+# library from. Populate with scripts/fetch-libvlc.ps1 (not committed - ~100MB
+# of VideoLAN binaries). Ignored on non-Windows, where libvlc comes from
+# pkg-config instead.
+[env]
+VLC_LIB_DIR = { value = "vendor/libvlc/win-x64", relative = true }

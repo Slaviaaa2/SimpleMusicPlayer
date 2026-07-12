@@ -10,48 +10,86 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-          - os: ubuntu-latest
-            rid: linux-x64
-          - os: macos-13
-            rid: osx-x64
-          - os: macos-14
-            rid: osx-arm64
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Restore
-        run: dotnet restore ./SimpleMusicPlayer.csproj
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Publish
-        run: dotnet publish ./SimpleMusicPlayer.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o ./publish/${{ matrix.rid }}
+      - name: Fetch libvlc runtime
+        shell: pwsh
+        run: ./scripts/fetch-libvlc.ps1
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -SkipBuild
 
       - name: Archive release
         shell: pwsh
         run: |
           $version = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "manual-build" }
-          $archiveName = "SimpleMusicPlayer-$version-${{ matrix.rid }}.zip"
-          Compress-Archive -Path ./publish/${{ matrix.rid }}/* -DestinationPath "./$archiveName" -Force
+          $archiveName = "SimpleMusicPlayer-$version-win-x64.zip"
+          Compress-Archive -Path ./publish/SimpleMusicPlayer-win-x64/* -DestinationPath "./$archiveName" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simple-music-player-${{ matrix.rid }}
+          name: simple-music-player-win-x64
+          path: SimpleMusicPlayer-*.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SimpleMusicPlayer-*.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install libvlc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvlc-dev vlc pkg-config
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+      - name: Archive release
+        run: |
+          version="${GITHUB_REF_NAME:-manual-build}"
+          mkdir -p publish/SimpleMusicPlayer-linux-x64
+          cp target/release/SimpleMusicPlayer publish/SimpleMusicPlayer-linux-x64/
+          cd publish
+          zip -r "../SimpleMusicPlayer-$version-linux-x64.zip" SimpleMusicPlayer-linux-x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-music-player-linux-x64
           path: SimpleMusicPlayer-*.zip
 
       - name: Create GitHub Release
