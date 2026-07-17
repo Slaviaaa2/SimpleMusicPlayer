@@ -70,7 +70,7 @@ jobs:
       - name: Install libvlc
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvlc-dev vlc pkg-config
+          sudo apt-get install -y libvlc-dev vlc pkg-config libfontconfig1-dev libxkbcommon-dev
 
       - name: Build
         run: cargo build --release --locked
