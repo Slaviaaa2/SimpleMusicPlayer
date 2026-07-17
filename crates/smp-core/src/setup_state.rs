@@ -97,7 +97,10 @@ pub fn normalize_path(path: &str) -> String {
 mod tests {
     use super::*;
 
+    // `D:\App` is only recognized as absolute on Windows; on Unix it would
+    // be joined onto the current directory.
     #[test]
+    #[cfg(windows)]
     fn normalize_path_strips_trailing_separators() {
         assert_eq!(normalize_path("D:\\App\\"), "D:\\App");
         assert_eq!(normalize_path("D:\\App"), "D:\\App");

@@ -143,7 +143,10 @@ fn build_context_text(source: &str, kind: PlaybackSourceKind) -> String {
 mod tests {
     use super::*;
 
+    // Asserts Windows path semantics (drive-letter roots, `\` separators);
+    // on Unix the same literal is a single path component.
     #[test]
+    #[cfg(windows)]
     fn from_file_defaults_display_name_to_stem_and_context_to_directory() {
         let item = PlaybackItem::from_file("D:\\Music\\Some Album\\01 Track.mp3");
         assert_eq!(item.display_name, "01 Track");
@@ -154,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn from_album_track_context_mentions_album_folder() {
         let item = PlaybackItem::from_album_track("D:\\Music\\Some Album\\01 Track.mp3");
         assert_eq!(item.context_text, "Album \u{b7} Some Album");

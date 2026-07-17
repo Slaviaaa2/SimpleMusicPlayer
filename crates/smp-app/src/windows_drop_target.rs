@@ -124,7 +124,7 @@ pub fn register(window: &slint::Window, on_drop: impl Fn(Vec<String>) + 'static)
 /// backend surfaces that as `HandleError::Unavailable`, which bubbles up
 /// through Slint's `WindowHandle` as a generic `NotSupported` on the outer
 /// call) -- callers should retry rather than treat this as permanent.
-fn window_hwnd(window: &slint::Window) -> windows::core::Result<HWND> {
+pub fn window_hwnd(window: &slint::Window) -> windows::core::Result<HWND> {
     let slint_handle = window.window_handle();
     let handle = slint_handle
         .window_handle()

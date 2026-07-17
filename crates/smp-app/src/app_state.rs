@@ -534,6 +534,50 @@ impl AppState {
         }
     }
 
+    /// Sources forwarded from a second process launch (e.g. double-clicking
+    /// a file in Explorer while the player is already running): surface the
+    /// window, then append them to the queue and start the first new track.
+    pub fn handle_external_open(&mut self, paths: Vec<String>) {
+        self.activate_window();
+
+        if self.is_busy || paths.is_empty() {
+            return;
+        }
+
+        let append = !self.queue.is_empty();
+        self.add_sources_async(paths, append, false, move |state, added| {
+            if !added.is_empty() {
+                let start_index = if append { state.queue.len() - added.len() } else { 0 };
+                state.start_track(start_index);
+            }
+        });
+    }
+
+    /// Best effort: `SetForegroundWindow` only succeeds when the forwarding
+    /// process donated its foreground right via `AllowSetForegroundWindow`.
+    fn activate_window(&self) {
+        self.with_window(|w| {
+            #[cfg(windows)]
+            {
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
+                };
+                if let Ok(hwnd) = crate::windows_drop_target::window_hwnd(w.window()) {
+                    unsafe {
+                        if IsIconic(hwnd).as_bool() {
+                            let _ = ShowWindow(hwnd, SW_RESTORE);
+                        }
+                        let _ = SetForegroundWindow(hwnd);
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = w.window().show();
+            }
+        });
+    }
+
     /// Mirrors MainWindow.axaml.cs's `Window_Drop`. Windows-only for now (see
     /// `windows_drop_target.rs`); macOS/Linux users fall back to Open/Add
     /// Album until a cross-platform drop path is implemented.

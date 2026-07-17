@@ -13,7 +13,7 @@ smp-playback = { path = "../smp-playback" }
 smp-discord = { path = "../smp-discord" }
 smp-setup = { path = "../smp-setup" }
 slint = { version = "1.17", features = ["raw-window-handle-06"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
 tokio-util = "0.7"
 rfd = "0.17"
 
@@ -29,6 +29,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Ole",
     "Win32_System_SystemServices",
     "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [build-dependencies]

@@ -305,3 +305,18 @@ Rust版の内容に全面更新(ビルド手順・fetch-libvlc・workspace構成
 3. タグpush時のCI動作確認(特にLinuxジョブとWindowsジョブのfetch-libvlc)。
 4. Discord Rich Presenceの実機確認(Discordクライアント起動状態での表示)。
 5. コミットはまだ何も作成していない(全変更がworking treeにある状態)。(Discord Presence / Windowsネイティブドラッグ&ドロップ / smp-setup)。
+
+## Phase 7: 単一インスタンス化と CI 修正(2026-07-17)[完了]
+
+### 単一インスタンス(ファイルの外部オープンを既存ウィンドウへ転送)
+- 課題: 再生中にExplorerで音声ファイルを開くと新しいウィンドウが立ち上がっていた。
+- 実装: `crates/smp-app/src/single_instance.rs`。先発プロセスがローカルIPCエンドポイント(Windows: named pipe `\.\pipe\SimpleMusicPlayer.{USERNAME}` / Unix: `$TMPDIR/SimpleMusicPlayer-{USER}.sock`)を所有し、後発は引数ソースを転送して即終了。追加クレートなし(tokio `net`/`io-util` featureのみ追加)。
+- プロトコル: ソースを改行区切り+EOT(0x04)終端、受信側がACK(0x06)応答。**Windows named pipeには half-close が無く、クライアント`shutdown()`がサーバ側EOFにならない**(EOF依存の初版は相互デッドロックした)ため明示的フレーミングが必須。
+- tokioのpipe/socket作成はランタイムコンテキスト必須(`runtime.enter()`ガードなしだと "no reactor running" でpanic)。
+- 受信側: `AppState::handle_external_open` — キュー非空ならappendし新規追加分の先頭を再生、`AllowSetForegroundWindow(ASFW_ANY)`(送信側)+`SetForegroundWindow`/`SW_RESTORE`(受信側)で前面化。
+- 相対パスは送信側のcwdで絶対化(`std::path::absolute`、存在するパスのみ。URLは素通し)。
+- 検証済み: 2重起動で後発が~230msでexit 0、プロセス1つのみ残存、転送したwavがhistory.jsonの先頭に記録(=受信・再生開始)。
+
+### GitHub Actions 修正
+- Linuxビルド失敗(run 29187866525): `yeslogic-fontconfig-sys`がfontconfig.pc不在でexit 101 → `libfontconfig1-dev libxkbcommon-dev`をapt installへ追加(d1fa68d)。
+- Linuxテスト失敗: smp-coreの3テストがWindowsパス意味論(`D:\`、`\`区切り)前提だったため`#[cfg(windows)]`でゲート。

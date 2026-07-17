@@ -7,6 +7,7 @@ slint::include_modules!();
 
 mod app_state;
 mod resolve;
+mod single_instance;
 mod ui_bridge;
 #[cfg(windows)]
 mod windows_drop_target;
@@ -25,12 +26,22 @@ fn main() -> Result<(), slint::PlatformError> {
         .expect("failed to start the background async runtime");
     let tokio_handle = runtime.handle().clone();
 
+    let options = CliOptions::parse(std::env::args().skip(1));
+
+    // Opening a file while the player is already running must not spawn a
+    // second window: hand the sources to the running instance and quit.
+    let forwarded_sources = single_instance::absolutize_sources(&options.sources);
+    let instance_listener = match single_instance::acquire(&runtime, &forwarded_sources) {
+        single_instance::Acquire::Forwarded => return Ok(()),
+        single_instance::Acquire::Primary(listener) => Some(listener),
+        single_instance::Acquire::Standalone => None,
+    };
+
     let window = AppWindow::new()?;
     app_state::init(window.as_weak(), tokio_handle);
 
     wire_callbacks(&window);
 
-    let options = CliOptions::parse(std::env::args().skip(1));
     let initial_sources = resolve_initial_sources(&options);
     let shuffle = options.shuffle;
     let start_index = options.start_index;
@@ -56,6 +67,14 @@ fn main() -> Result<(), slint::PlatformError> {
     slint::Timer::single_shot(std::time::Duration::from_millis(300), || {
         app_state::with_state(|s| s.offer_app_setup_if_needed());
     });
+
+    if let Some(listener) = instance_listener {
+        single_instance::spawn_listener(runtime.handle(), listener, |paths| {
+            let _ = slint::invoke_from_event_loop(move || {
+                app_state::with_state(|s| s.handle_external_open(paths));
+            });
+        });
+    }
 
     slint::run_event_loop()?;
     window.hide()
